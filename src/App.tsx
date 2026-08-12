@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ImagePreview, PreviewFallback, StlThumbnail, StlViewer } from './components/Preview'
 import {
+  duplicateSignature,
+  findPossibleDuplicates,
   formatBytes,
   groupIntoCollections,
   scanDirectory,
@@ -62,8 +64,20 @@ export default function App() {
   const [selectedFileId, setSelectedFileId] = useState<string>()
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
+  const [duplicatesOnly, setDuplicatesOnly] = useState(false)
 
   const collections = useMemo(() => groupIntoCollections(files, rootName), [files, rootName])
+  const possibleDuplicates = useMemo(() => findPossibleDuplicates(files), [files])
+  const duplicateFileIds = useMemo(
+    () => new Set(Array.from(possibleDuplicates.values()).flatMap((matches) => matches.map((file) => file.id))),
+    [possibleDuplicates],
+  )
+  const duplicateFileCount = useMemo(
+    () => Array.from(possibleDuplicates.values()).reduce((sum, matches) => sum + matches.length, 0),
+    [possibleDuplicates],
+  )
+  const collectionDuplicateCount = (collection: ModelCollection) =>
+    collection.files.filter((file) => duplicateFileIds.has(file.id)).length
   const modelCount = useMemo(() => collections.filter((collection) => collection.kind === 'model').length, [collections])
 
   const folderPaths = useMemo(() => {
@@ -146,6 +160,7 @@ export default function App() {
 
     return source.filter((collection) => {
       if (!collectionMatchesType(collection, typeFilter)) return false
+      if (duplicatesOnly && collectionDuplicateCount(collection) === 0) return false
       if (!needle) return true
       return (
         collection.name.toLowerCase().includes(needle) ||
@@ -154,11 +169,12 @@ export default function App() {
         collection.files.some((file) => file.name.toLowerCase().includes(needle))
       )
     })
-  }, [directCollections, query, scopedCollections, typeFilter])
+  }, [directCollections, duplicateFileIds, duplicatesOnly, query, scopedCollections, typeFilter])
 
   const matchingScopeCollections = useMemo(() => {
     return scopedCollections.filter((collection) => {
       if (!collectionMatchesType(collection, typeFilter)) return false
+      if (duplicatesOnly && collectionDuplicateCount(collection) === 0) return false
       const needle = query.trim().toLowerCase()
       if (!needle) return true
       return (
@@ -168,7 +184,7 @@ export default function App() {
         collection.files.some((file) => file.name.toLowerCase().includes(needle))
       )
     })
-  }, [query, scopedCollections, typeFilter])
+  }, [duplicateFileIds, duplicatesOnly, query, scopedCollections, typeFilter])
 
   const matchingScopeCount = matchingScopeCollections.length
   const matchingModelCount = matchingScopeCollections.filter((collection) => collection.kind === 'model').length
@@ -177,6 +193,11 @@ export default function App() {
   const selected = collections.find((collection) => collection.id === selectedId)
   const defaultPreviewFile = selected?.geometryFiles.find((file) => file.extension === 'stl') ?? selected?.cover
   const selectedPreviewFile = selected?.files.find((file) => file.id === selectedFileId) ?? defaultPreviewFile
+  const selectedDuplicateMatches = selectedPreviewFile
+    ? possibleDuplicates.get(duplicateSignature(selectedPreviewFile))
+    : undefined
+  const selectedDuplicateOthers = selectedDuplicateMatches?.filter((file) => file.id !== selectedPreviewFile?.id) ?? []
+
   const canExpandPreview = Boolean(
     selectedPreviewFile &&
     (selectedPreviewFile.extension === 'stl' || ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension)),
@@ -214,6 +235,7 @@ export default function App() {
       setSelectedFileId(undefined)
       setActiveFolderPath('')
       setIsPreviewExpanded(false)
+      setDuplicatesOnly(false)
       setIsScanning(true)
       const discovered = await scanDirectory(root, setProgress)
       setFiles(discovered)
@@ -302,8 +324,24 @@ export default function App() {
                   {filter.label}
                 </button>
               ))}
+              <button
+                type="button"
+                className={duplicatesOnly ? 'filter-button duplicate-filter active' : 'filter-button duplicate-filter'}
+                onClick={() => setDuplicatesOnly((value) => !value)}
+                disabled={possibleDuplicates.size === 0}
+                title="Files with the same normalised name and exact byte size"
+              >
+                Possible duplicates{possibleDuplicates.size > 0 ? ` (${possibleDuplicates.size})` : ''}
+              </button>
             </div>
           </div>
+
+          {rootName && !isScanning && possibleDuplicates.size > 0 && (
+            <div className="duplicate-summary" role="status">
+              <strong>{possibleDuplicates.size} possible duplicate group{possibleDuplicates.size === 1 ? '' : 's'}</strong>
+              <span>{duplicateFileCount} files share the same normalised filename and exact byte size.</span>
+            </div>
+          )}
 
           {rootName && !isScanning && (
             <section className="folder-browser" aria-label="Folder hierarchy">
@@ -376,7 +414,9 @@ export default function App() {
           )}
 
           <div className="gallery">
-            {filteredCollections.map((collection) => (
+            {filteredCollections.map((collection) => {
+              const duplicateCount = collectionDuplicateCount(collection)
+              return (
               <button
                 key={collection.id}
                 className={[
@@ -390,7 +430,14 @@ export default function App() {
                   setIsPreviewExpanded(false)
                 }}
               >
-                <div className="model-cover"><Cover collection={collection} /></div>
+                <div className="model-cover">
+                  <Cover collection={collection} />
+                  {duplicateCount > 0 && (
+                    <span className="duplicate-card-badge" title={`${duplicateCount} file${duplicateCount === 1 ? '' : 's'} in this collection have possible duplicate matches`}>
+                      POSSIBLE DUP{duplicateCount === 1 ? '' : ` · ${duplicateCount} FILES`}
+                    </span>
+                  )}
+                </div>
                 <div className="model-card-body">
                   <div className="model-title-row">
                     <h3 title={collection.sourceName !== collection.name ? `Source folder: ${collection.sourceName}` : collection.name}>{collection.name}</h3>
@@ -407,7 +454,8 @@ export default function App() {
                   </div>
                 </div>
               </button>
-            ))}
+              )
+            })}
           </div>
         </section>
 
@@ -465,7 +513,11 @@ export default function App() {
                 {selected.files.map((file) => (
                   <button
                     type="button"
-                    className={selectedPreviewFile?.id === file.id ? 'file-row selected-file' : 'file-row'}
+                    className={[
+                      'file-row',
+                      selectedPreviewFile?.id === file.id ? 'selected-file' : '',
+                      duplicateFileIds.has(file.id) ? 'possible-duplicate-file' : '',
+                    ].filter(Boolean).join(' ')}
                     key={file.id}
                     onClick={() => setSelectedFileId(file.id)}
                     title={`Preview ${file.name}`}
@@ -478,10 +530,35 @@ export default function App() {
                       <strong>{file.name}</strong>
                       <span>{formatBytes(file.size)} · {new Date(file.lastModified).toLocaleDateString()}</span>
                     </div>
+                    {duplicateFileIds.has(file.id) && (
+                      <span className="duplicate-file-badge">DUP ×{possibleDuplicates.get(duplicateSignature(file))?.length ?? 2}</span>
+                    )}
                   </button>
                 ))}
               </div>
             </section>
+
+            {selectedPreviewFile && selectedDuplicateOthers.length > 0 && (
+              <section className="duplicate-locations">
+                <div className="duplicate-locations-heading">
+                  <div>
+                    <div className="eyebrow">POSSIBLE DUPLICATE</div>
+                    <h3>{selectedDuplicateOthers.length} other matching location{selectedDuplicateOthers.length === 1 ? '' : 's'}</h3>
+                  </div>
+                  <span>name + exact size</span>
+                </div>
+                <div className="duplicate-location-list">
+                  {selectedDuplicateOthers.map((match) => (
+                    <div className="duplicate-location-row" key={match.id}>
+                      <strong>{match.name}</strong>
+                      <span>{match.folderPath || `${rootName ?? 'Selected folder'} (library root)`}</span>
+                      <small>{formatBytes(match.size)}</small>
+                    </div>
+                  ))}
+                </div>
+                <p>These are possible duplicates only. Content hashing can be added later for exact verification.</p>
+              </section>
+            )}
 
             <div className="read-only-note">
               <strong>Read-only by design</strong>

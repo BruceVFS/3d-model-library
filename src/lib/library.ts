@@ -27,6 +27,12 @@ export type ModelCollection = {
   cover?: LibraryFile
 }
 
+
+export type DuplicateGroup = {
+  signature: string
+  files: LibraryFile[]
+}
+
 export type ScanProgress = {
   folders: number
   filesVisited: number
@@ -220,6 +226,28 @@ export function groupIntoCollections(files: LibraryFile[], rootName?: string): M
       if (a.kind !== b.kind) return a.kind === 'loose-root' ? 1 : -1
       return a.name.localeCompare(b.name)
     })
+}
+
+
+export function duplicateSignature(file: LibraryFile): string {
+  return `${file.name.trim().toLocaleLowerCase()}::${file.size}`
+}
+
+export function findPossibleDuplicates(files: LibraryFile[]): Map<string, LibraryFile[]> {
+  const grouped = new Map<string, LibraryFile[]>()
+
+  for (const file of files) {
+    const signature = duplicateSignature(file)
+    const current = grouped.get(signature) ?? []
+    current.push(file)
+    grouped.set(signature, current)
+  }
+
+  return new Map(
+    Array.from(grouped.entries())
+      .filter(([, matches]) => matches.length > 1)
+      .sort(([, a], [, b]) => a[0].name.localeCompare(b[0].name)),
+  )
 }
 
 export function formatBytes(bytes: number): string {

@@ -111,3 +111,10 @@ STL and image previews in the model detail panel can be opened in a large lightb
 ## Library root handling (Fix 06)
 
 The selected library root is primarily a catalogue container, not automatically a model. When supported files exist directly in the selected root alongside nested model folders, they are shown in a distinct **Loose files** card. This keeps those files accessible without inflating the model count or presenting the entire library itself as a model collection. The source files remain untouched.
+
+
+## Possible duplicate detection (Fix 07)
+
+During a scan, supported files are grouped by a conservative duplicate signature: normalised filename plus exact byte size. Any signature that occurs more than once is shown as a **possible duplicate**. A catalogue filter can show only collections containing possible duplicates, affected model cards and file rows are marked, and the detail panel lists the other matching locations for the currently selected file.
+
+This is intentionally a fast first-pass indicator rather than proof of identical contents. No source files are opened again solely for duplicate checking, and nothing is uploaded. A later increment can optionally verify candidates with local content hashes (for example SHA-256).
