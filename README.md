@@ -10,7 +10,7 @@ This rebuild intentionally keeps the source library read-only. It does not renam
 - Recursive scanning
 - Supported file discovery: STL, 3MF, ZIP, JPG/JPEG, PNG, WEBP
 - Folder-based grouping into model collections
-- Root collection uses the selected folder name rather than a generic label
+- Selected library root is treated as a container; direct supported files remain accessible as a separate “Loose files” item when nested model folders exist
 - Lightweight folder hierarchy browser with breadcrumbs and subtree counts
 - Existing image covers
 - Locally generated STL thumbnails
@@ -24,7 +24,8 @@ This rebuild intentionally keeps the source library read-only. It does not renam
 ## Current grouping rule
 
 - Each folder containing supported files is currently treated as one model collection.
-- Files in the selected root folder form a root collection named after that selected folder.
+- If the selected root contains only supported files, it can still act as a single model collection.
+- If the selected root also contains nested model folders, its direct supported files are exposed separately as “Loose files” and are not counted as a model.
 - Nested folder structure is preserved in catalogue paths and can be browsed without changing the source tree.
 - This is deliberately simple for now; nested model folders, multiple models in one folder, and manual regrouping remain future work.
 
@@ -105,3 +106,8 @@ These rules are deterministic and are intended to remain visible and manually ov
 ## Expanded preview (Fix 05)
 
 STL and image previews in the model detail panel can be opened in a large lightbox-style preview. The expanded STL viewer reuses the same local Three.js renderer and supports rotate, zoom and pan. It can be closed with the close button, Escape, or by clicking the backdrop. A Reset view control restores the standard catalogue camera position. No model data is transmitted or modified.
+
+
+## Library root handling (Fix 06)
+
+The selected library root is primarily a catalogue container, not automatically a model. When supported files exist directly in the selected root alongside nested model folders, they are shown in a distinct **Loose files** card. This keeps those files accessible without inflating the model count or presenting the entire library itself as a model collection. The source files remain untouched.

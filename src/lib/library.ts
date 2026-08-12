@@ -12,8 +12,11 @@ export type LibraryFile = {
   handle: FileSystemFileHandle
 }
 
+export type CollectionKind = 'model' | 'loose-root'
+
 export type ModelCollection = {
   id: string
+  kind: CollectionKind
   name: string
   sourceName: string
   folderPath: string
@@ -150,7 +153,19 @@ export function toDisplayName(sourceName: string): string {
   return hadWhitespace ? display : titleCaseWords(display)
 }
 
-function collectionIdentity(folderPath: string, files: LibraryFile[], rootName?: string) {
+function collectionIdentity(
+  folderPath: string,
+  files: LibraryFile[],
+  rootName: string | undefined,
+  kind: CollectionKind,
+) {
+  if (kind === 'loose-root') {
+    return {
+      sourceName: rootName || 'Selected folder',
+      displayName: 'Loose files',
+    }
+  }
+
   const sourceName = folderPath
     ? folderPath.split('/').at(-1) || folderPath
     : rootName || (files.length === 1 ? files[0].name.replace(/\.[^.]+$/, '') : 'Selected folder')
@@ -171,19 +186,26 @@ export function groupIntoCollections(files: LibraryFile[], rootName?: string): M
     groups.set(key, current)
   }
 
+  // A selected library root is a container first. If it has supported files of
+  // its own as well as nested model folders, keep those files accessible as a
+  // separate catalogue item rather than pretending the entire library is a model.
+  const hasNestedCollections = Array.from(groups.keys()).some((key) => key !== '__root__')
+
   return Array.from(groups.entries())
     .map(([key, groupFiles]) => {
       const folderPath = key === '__root__' ? '' : key
+      const kind: CollectionKind = key === '__root__' && hasNestedCollections ? 'loose-root' : 'model'
       const sortedFiles = [...groupFiles].sort((a, b) => a.name.localeCompare(b.name))
       const imageFiles = sortedFiles.filter((file) => imageExtensions.has(file.extension))
       const geometryFiles = sortedFiles.filter((file) => geometryExtensions.has(file.extension))
       const packageFiles = sortedFiles.filter((file) => file.extension === 'zip')
-      const { sourceName, displayName } = collectionIdentity(folderPath, sortedFiles, rootName)
+      const { sourceName, displayName } = collectionIdentity(folderPath, sortedFiles, rootName, kind)
 
       const cover = imageFiles[0] ?? geometryFiles.find((file) => file.extension === 'stl') ?? geometryFiles[0]
 
       return {
         id: folderPath || '__root__',
+        kind,
         name: displayName,
         sourceName,
         folderPath,
@@ -194,7 +216,10 @@ export function groupIntoCollections(files: LibraryFile[], rootName?: string): M
         cover,
       }
     })
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'loose-root' ? 1 : -1
+      return a.name.localeCompare(b.name)
+    })
 }
 
 export function formatBytes(bytes: number): string {

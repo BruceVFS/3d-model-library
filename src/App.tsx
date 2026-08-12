@@ -64,6 +64,7 @@ export default function App() {
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
 
   const collections = useMemo(() => groupIntoCollections(files, rootName), [files, rootName])
+  const modelCount = useMemo(() => collections.filter((collection) => collection.kind === 'model').length, [collections])
 
   const folderPaths = useMemo(() => {
     const paths = new Set<string>()
@@ -155,7 +156,7 @@ export default function App() {
     })
   }, [directCollections, query, scopedCollections, typeFilter])
 
-  const matchingScopeCount = useMemo(() => {
+  const matchingScopeCollections = useMemo(() => {
     return scopedCollections.filter((collection) => {
       if (!collectionMatchesType(collection, typeFilter)) return false
       const needle = query.trim().toLowerCase()
@@ -166,8 +167,12 @@ export default function App() {
         collection.folderPath.toLowerCase().includes(needle) ||
         collection.files.some((file) => file.name.toLowerCase().includes(needle))
       )
-    }).length
+    })
   }, [query, scopedCollections, typeFilter])
+
+  const matchingScopeCount = matchingScopeCollections.length
+  const matchingModelCount = matchingScopeCollections.filter((collection) => collection.kind === 'model').length
+  const hasMatchingLooseRootFiles = matchingScopeCollections.some((collection) => collection.kind === 'loose-root')
 
   const selected = collections.find((collection) => collection.id === selectedId)
   const defaultPreviewFile = selected?.geometryFiles.find((file) => file.extension === 'stl') ?? selected?.cover
@@ -259,7 +264,7 @@ export default function App() {
             </div>
 
             <div className="stat-row">
-              <div className="stat-card"><strong>{collections.length}</strong><span>Models</span></div>
+              <div className="stat-card"><strong>{modelCount}</strong><span>Models</span></div>
               <div className="stat-card"><strong>{files.length}</strong><span>Files</span></div>
               <div className="stat-card"><strong>{formatBytes(totalBytes)}</strong><span>Size</span></div>
             </div>
@@ -328,7 +333,10 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-                <span className="folder-scope-count">{matchingScopeCount} model{matchingScopeCount === 1 ? '' : 's'} in scope</span>
+                <span className="folder-scope-count">
+                  {matchingModelCount} model{matchingModelCount === 1 ? '' : 's'} in scope
+                  {hasMatchingLooseRootFiles ? ' · root files available' : ''}
+                </span>
               </div>
 
               {childFolders.length > 0 && (
@@ -371,7 +379,11 @@ export default function App() {
             {filteredCollections.map((collection) => (
               <button
                 key={collection.id}
-                className={selectedId === collection.id ? 'model-card selected' : 'model-card'}
+                className={[
+                  'model-card',
+                  collection.kind === 'loose-root' ? 'loose-files-card' : '',
+                  selectedId === collection.id ? 'selected' : '',
+                ].filter(Boolean).join(' ')}
                 onClick={() => {
                   setSelectedId(collection.id)
                   setSelectedFileId(undefined)
@@ -384,8 +396,11 @@ export default function App() {
                     <h3 title={collection.sourceName !== collection.name ? `Source folder: ${collection.sourceName}` : collection.name}>{collection.name}</h3>
                     <span>{collection.files.length}</span>
                   </div>
-                  <div className="folder-path" title={collection.folderPath || rootName || 'Selected folder'}>{collection.folderPath || 'Selected folder'}</div>
+                  <div className="folder-path" title={collection.folderPath || rootName || 'Selected folder'}>
+                    {collection.kind === 'loose-root' ? `${rootName ?? 'Selected folder'} library root` : collection.folderPath || 'Selected folder'}
+                  </div>
                   <div className="badges">
+                    {collection.kind === 'loose-root' && <span className="collection-kind-badge">ROOT FILES</span>}
                     {Array.from(new Set(collection.files.map((file) => file.extension))).slice(0, 5).map((ext) => (
                       <span key={ext} className={`file-badge file-${ext}`}>{ext.toUpperCase()}</span>
                     ))}
@@ -408,9 +423,9 @@ export default function App() {
               }}
             >×</button>
             <div className="detail-heading">
-              <div className="eyebrow">MODEL COLLECTION</div>
+              <div className="eyebrow">{selected.kind === 'loose-root' ? 'LOOSE LIBRARY FILES' : 'MODEL COLLECTION'}</div>
               <h2>{selected.name}</h2>
-              <p><span className="detail-source-label">Source:</span> {selected.folderPath || rootName || 'Selected folder'}</p>
+              <p><span className="detail-source-label">Source:</span> {selected.kind === 'loose-root' ? `${rootName ?? 'Selected folder'} (selected library root)` : selected.folderPath || rootName || 'Selected folder'}</p>
             </div>
 
             <div className="detail-preview-stage">
