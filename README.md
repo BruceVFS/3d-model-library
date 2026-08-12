@@ -101,3 +101,7 @@ Folder navigation and model cards have distinct roles:
 - when a search is active, matching descendant collections are shown so search remains useful across the current branch.
 
 These rules are deterministic and are intended to remain visible and manually overridable in a later release.
+
+## Expanded preview (Fix 05)
+
+STL and image previews in the model detail panel can be opened in a large lightbox-style preview. The expanded STL viewer reuses the same local Three.js renderer and supports rotate, zoom and pan. It can be closed with the close button, Escape, or by clicking the backdrop. A Reset view control restores the standard catalogue camera position. No model data is transmitted or modified.

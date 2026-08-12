@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ImagePreview, PreviewFallback, StlThumbnail, StlViewer } from './components/Preview'
 import {
   formatBytes,
@@ -61,6 +61,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string>()
   const [selectedFileId, setSelectedFileId] = useState<string>()
   const [activeFolderPath, setActiveFolderPath] = useState('')
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
 
   const collections = useMemo(() => groupIntoCollections(files, rootName), [files, rootName])
 
@@ -171,6 +172,27 @@ export default function App() {
   const selected = collections.find((collection) => collection.id === selectedId)
   const defaultPreviewFile = selected?.geometryFiles.find((file) => file.extension === 'stl') ?? selected?.cover
   const selectedPreviewFile = selected?.files.find((file) => file.id === selectedFileId) ?? defaultPreviewFile
+  const canExpandPreview = Boolean(
+    selectedPreviewFile &&
+    (selectedPreviewFile.extension === 'stl' || ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension)),
+  )
+
+  useEffect(() => {
+    if (!isPreviewExpanded) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsPreviewExpanded(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isPreviewExpanded])
 
   const chooseFolder = async () => {
     if (!('showDirectoryPicker' in window)) {
@@ -186,6 +208,7 @@ export default function App() {
       setSelectedId(undefined)
       setSelectedFileId(undefined)
       setActiveFolderPath('')
+      setIsPreviewExpanded(false)
       setIsScanning(true)
       const discovered = await scanDirectory(root, setProgress)
       setFiles(discovered)
@@ -204,6 +227,7 @@ export default function App() {
     setActiveFolderPath(path)
     setSelectedId(undefined)
     setSelectedFileId(undefined)
+    setIsPreviewExpanded(false)
   }
 
   return (
@@ -351,6 +375,7 @@ export default function App() {
                 onClick={() => {
                   setSelectedId(collection.id)
                   setSelectedFileId(undefined)
+                  setIsPreviewExpanded(false)
                 }}
               >
                 <div className="model-cover"><Cover collection={collection} /></div>
@@ -379,6 +404,7 @@ export default function App() {
               onClick={() => {
                 setSelectedId(undefined)
                 setSelectedFileId(undefined)
+                setIsPreviewExpanded(false)
               }}
             >×</button>
             <div className="detail-heading">
@@ -387,15 +413,30 @@ export default function App() {
               <p><span className="detail-source-label">Source:</span> {selected.folderPath || rootName || 'Selected folder'}</p>
             </div>
 
-            {selectedPreviewFile?.extension === 'stl' ? (
-              <StlViewer file={selectedPreviewFile} />
-            ) : selectedPreviewFile && ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension) ? (
-              <div className="detail-image"><ImagePreview file={selectedPreviewFile} /></div>
-            ) : selectedPreviewFile ? (
-              <div className="detail-image"><PreviewFallback label={`${selectedPreviewFile.extension.toUpperCase()} preview not yet supported`} /></div>
-            ) : (
-              <div className="detail-image"><PreviewFallback label="3D preview unavailable" /></div>
-            )}
+            <div className="detail-preview-stage">
+              {selectedPreviewFile?.extension === 'stl' ? (
+                <StlViewer file={selectedPreviewFile} />
+              ) : selectedPreviewFile && ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension) ? (
+                <div className="detail-image"><ImagePreview file={selectedPreviewFile} /></div>
+              ) : selectedPreviewFile ? (
+                <div className="detail-image"><PreviewFallback label={`${selectedPreviewFile.extension.toUpperCase()} preview not yet supported`} /></div>
+              ) : (
+                <div className="detail-image"><PreviewFallback label="3D preview unavailable" /></div>
+              )}
+
+              {canExpandPreview && (
+                <button
+                  type="button"
+                  className="preview-expand-button"
+                  onClick={() => setIsPreviewExpanded(true)}
+                  aria-label="Expand preview"
+                  title="Expand preview"
+                >
+                  <span aria-hidden="true">⛶</span>
+                  <span>Expand</span>
+                </button>
+              )}
+            </div>
 
             <div className="detail-summary">
               <div><strong>{selected.geometryFiles.length}</strong><span>Geometry</span></div>
@@ -432,6 +473,47 @@ export default function App() {
               <span>No source file has been moved, renamed, overwritten, extracted or uploaded.</span>
             </div>
           </aside>
+        )}
+
+        {isPreviewExpanded && selected && selectedPreviewFile && canExpandPreview && (
+          <div
+            className="preview-modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setIsPreviewExpanded(false)
+            }}
+          >
+            <section
+              className="preview-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Expanded preview of ${selectedPreviewFile.name}`}
+            >
+              <header className="preview-modal-header">
+                <div>
+                  <div className="eyebrow">EXPANDED PREVIEW</div>
+                  <h2>{selected.name}</h2>
+                  <p>{selectedPreviewFile.name}</p>
+                </div>
+                <button
+                  type="button"
+                  className="preview-modal-close"
+                  onClick={() => setIsPreviewExpanded(false)}
+                  aria-label="Close expanded preview"
+                >
+                  ×
+                </button>
+              </header>
+
+              <div className="preview-modal-content">
+                {selectedPreviewFile.extension === 'stl' ? (
+                  <StlViewer file={selectedPreviewFile} showReset />
+                ) : (
+                  <div className="expanded-image"><ImagePreview file={selectedPreviewFile} /></div>
+                )}
+              </div>
+            </section>
+          </div>
         )}
       </main>
     </div>

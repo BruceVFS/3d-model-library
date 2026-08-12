@@ -124,8 +124,9 @@ export function StlThumbnail({ file }: { file: LibraryFile }) {
   return src ? <img className="cover-image" src={src} alt="" /> : <PreviewFallback label="Generating STL preview…" />
 }
 
-export function StlViewer({ file }: { file: LibraryFile }) {
+export function StlViewer({ file, showReset = false }: { file: LibraryFile; showReset?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null)
+  const resetViewRef = useRef<() => void>(() => undefined)
   const [error, setError] = useState<string>()
 
   useEffect(() => {
@@ -175,6 +176,13 @@ export function StlViewer({ file }: { file: LibraryFile }) {
       controls.target.set(0, 0, 0)
       controls.update()
 
+      resetViewRef.current = () => {
+        if (!geometry || !controls) return
+        fitCamera(camera, geometry)
+        controls.target.set(0, 0, 0)
+        controls.update()
+      }
+
       const resize = () => {
         if (!renderer) return
         const width = Math.max(host.clientWidth, 1)
@@ -211,6 +219,7 @@ export function StlViewer({ file }: { file: LibraryFile }) {
       geometry?.dispose()
       material?.dispose()
       renderer?.dispose()
+      resetViewRef.current = () => undefined
       host.replaceChildren()
     }
   }, [file])
@@ -220,6 +229,11 @@ export function StlViewer({ file }: { file: LibraryFile }) {
       <div ref={hostRef} className="viewer-host" />
       {error && <div className="viewer-error">{error}</div>}
       {!error && <div className="viewer-hint">Drag to rotate · wheel to zoom · right-drag to pan</div>}
+      {showReset && !error && (
+        <button type="button" className="viewer-reset-button" onClick={() => resetViewRef.current()}>
+          Reset view
+        </button>
+      )}
     </div>
   )
 }
