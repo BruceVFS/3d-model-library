@@ -15,6 +15,7 @@ export type LibraryFile = {
 export type ModelCollection = {
   id: string
   name: string
+  sourceName: string
   folderPath: string
   files: LibraryFile[]
   imageFiles: LibraryFile[]
@@ -113,13 +114,54 @@ export async function scanDirectory(
   return discovered
 }
 
-function displayName(folderPath: string, files: LibraryFile[]) {
-  if (folderPath) return folderPath.split('/').at(-1) || folderPath
-  if (files.length === 1) return files[0].name.replace(/\.[^.]+$/, '')
-  return 'Library root'
+function titleCaseWords(value: string) {
+  return value
+    .split(' ')
+    .map((word) => {
+      if (!word) return word
+      if (/^[A-Z0-9+]{2,}$/.test(word)) return word
+      if (/^\d/.test(word)) return word
+      return `${word.charAt(0).toUpperCase()}${word.slice(1)}`
+    })
+    .join(' ')
 }
 
-export function groupIntoCollections(files: LibraryFile[]): ModelCollection[] {
+/**
+ * Produce a catalogue-friendly label without changing the source folder name.
+ * Deliberately conservative: already-readable names are preserved, while common
+ * downloaded-model slug/suffix patterns are cleaned up for display only.
+ */
+export function toDisplayName(sourceName: string): string {
+  const withoutKnownSuffix = sourceName
+    .replace(/(?:[-_ ]model[-_ ]files)$/i, '')
+    .trim()
+
+  const hadWhitespace = /\s/.test(withoutKnownSuffix)
+  let display = withoutKnownSuffix.replace(/_+/g, ' ')
+
+  // A name with no whitespace is usually a web-download slug. Convert its
+  // hyphens to spaces. Names that already contain spaces (for example
+  // "Underware - Channels-L") retain their intentional punctuation.
+  if (!hadWhitespace) display = display.replace(/-+/g, ' ')
+
+  display = display.replace(/\s+/g, ' ').trim()
+  if (!display) return sourceName
+
+  return hadWhitespace ? display : titleCaseWords(display)
+}
+
+function collectionIdentity(folderPath: string, files: LibraryFile[], rootName?: string) {
+  const sourceName = folderPath
+    ? folderPath.split('/').at(-1) || folderPath
+    : rootName || (files.length === 1 ? files[0].name.replace(/\.[^.]+$/, '') : 'Selected folder')
+
+  return {
+    sourceName,
+    displayName: folderPath ? toDisplayName(sourceName) : sourceName,
+  }
+}
+
+export function groupIntoCollections(files: LibraryFile[], rootName?: string): ModelCollection[] {
   const groups = new Map<string, LibraryFile[]>()
 
   for (const file of files) {
@@ -136,12 +178,14 @@ export function groupIntoCollections(files: LibraryFile[]): ModelCollection[] {
       const imageFiles = sortedFiles.filter((file) => imageExtensions.has(file.extension))
       const geometryFiles = sortedFiles.filter((file) => geometryExtensions.has(file.extension))
       const packageFiles = sortedFiles.filter((file) => file.extension === 'zip')
+      const { sourceName, displayName } = collectionIdentity(folderPath, sortedFiles, rootName)
 
       const cover = imageFiles[0] ?? geometryFiles.find((file) => file.extension === 'stl') ?? geometryFiles[0]
 
       return {
         id: folderPath || '__root__',
-        name: displayName(folderPath, sortedFiles),
+        name: displayName,
+        sourceName,
         folderPath,
         files: sortedFiles,
         imageFiles,

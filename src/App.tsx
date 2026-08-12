@@ -4,6 +4,7 @@ import {
   formatBytes,
   groupIntoCollections,
   scanDirectory,
+  toDisplayName,
   type LibraryFile,
   type ModelCollection,
   type ScanProgress,
@@ -59,21 +60,113 @@ export default function App() {
   const [typeFilter, setTypeFilter] = useState<'all' | SupportedExtension>('all')
   const [selectedId, setSelectedId] = useState<string>()
   const [selectedFileId, setSelectedFileId] = useState<string>()
+  const [activeFolderPath, setActiveFolderPath] = useState('')
 
-  const collections = useMemo(() => groupIntoCollections(files), [files])
+  const collections = useMemo(() => groupIntoCollections(files, rootName), [files, rootName])
+
+  const folderPaths = useMemo(() => {
+    const paths = new Set<string>()
+
+    for (const collection of collections) {
+      if (!collection.folderPath) continue
+      const segments = collection.folderPath.split('/')
+      for (let index = 1; index <= segments.length; index += 1) {
+        paths.add(segments.slice(0, index).join('/'))
+      }
+    }
+
+    return Array.from(paths).sort((a, b) => a.localeCompare(b))
+  }, [collections])
+
+  const childFolders = useMemo(() => {
+    const prefix = activeFolderPath ? `${activeFolderPath}/` : ''
+
+    return folderPaths
+      .filter((path) => {
+        if (path === activeFolderPath) return false
+        if (!path.startsWith(prefix)) return false
+        const remainder = path.slice(prefix.length)
+        if (!remainder || remainder.includes('/')) return false
+
+        // Only show a hierarchy chip when this folder is genuinely a branch
+        // containing model collections below it. Terminal model folders belong
+        // in the visual gallery instead of being duplicated as navigation.
+        return collections.some((collection) => collection.folderPath.startsWith(`${path}/`))
+      })
+      .map((path) => ({
+        path,
+        sourceName: path.split('/').at(-1) ?? path,
+        name: toDisplayName(path.split('/').at(-1) ?? path),
+        count: collections.filter(
+          (collection) => collection.folderPath === path || collection.folderPath.startsWith(`${path}/`),
+        ).length,
+      }))
+  }, [activeFolderPath, collections, folderPaths])
+
+  const folderCrumbs = useMemo(() => {
+    if (!activeFolderPath) return []
+    const segments = activeFolderPath.split('/')
+    return segments.map((sourceName, index) => ({
+      sourceName,
+      name: toDisplayName(sourceName),
+      path: segments.slice(0, index + 1).join('/'),
+    }))
+  }, [activeFolderPath])
+
+  const scopedCollections = useMemo(() => {
+    if (!activeFolderPath) return collections
+    return collections.filter(
+      (collection) =>
+        collection.folderPath === activeFolderPath ||
+        collection.folderPath.startsWith(`${activeFolderPath}/`),
+    )
+  }, [activeFolderPath, collections])
+
+  const directCollections = useMemo(() => {
+    const prefix = activeFolderPath ? `${activeFolderPath}/` : ''
+
+    return collections.filter((collection) => {
+      if (collection.folderPath === activeFolderPath) return true
+      if (!collection.folderPath.startsWith(prefix)) return false
+
+      const remainder = collection.folderPath.slice(prefix.length)
+      if (!remainder || remainder.includes('/')) return false
+
+      // If a direct child contains deeper model collections, it is a navigation
+      // branch and is shown above as a folder chip. Otherwise it is a model card.
+      return !collections.some((candidate) => candidate.folderPath.startsWith(`${collection.folderPath}/`))
+    })
+  }, [activeFolderPath, collections])
 
   const filteredCollections = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return collections.filter((collection) => {
+    const source = needle ? scopedCollections : directCollections
+
+    return source.filter((collection) => {
       if (!collectionMatchesType(collection, typeFilter)) return false
       if (!needle) return true
       return (
         collection.name.toLowerCase().includes(needle) ||
+        collection.sourceName.toLowerCase().includes(needle) ||
         collection.folderPath.toLowerCase().includes(needle) ||
         collection.files.some((file) => file.name.toLowerCase().includes(needle))
       )
     })
-  }, [collections, query, typeFilter])
+  }, [directCollections, query, scopedCollections, typeFilter])
+
+  const matchingScopeCount = useMemo(() => {
+    return scopedCollections.filter((collection) => {
+      if (!collectionMatchesType(collection, typeFilter)) return false
+      const needle = query.trim().toLowerCase()
+      if (!needle) return true
+      return (
+        collection.name.toLowerCase().includes(needle) ||
+        collection.sourceName.toLowerCase().includes(needle) ||
+        collection.folderPath.toLowerCase().includes(needle) ||
+        collection.files.some((file) => file.name.toLowerCase().includes(needle))
+      )
+    }).length
+  }, [query, scopedCollections, typeFilter])
 
   const selected = collections.find((collection) => collection.id === selectedId)
   const defaultPreviewFile = selected?.geometryFiles.find((file) => file.extension === 'stl') ?? selected?.cover
@@ -92,6 +185,7 @@ export default function App() {
       setFiles([])
       setSelectedId(undefined)
       setSelectedFileId(undefined)
+      setActiveFolderPath('')
       setIsScanning(true)
       const discovered = await scanDirectory(root, setProgress)
       setFiles(discovered)
@@ -105,6 +199,12 @@ export default function App() {
   }
 
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0)
+
+  const navigateFolder = (path: string) => {
+    setActiveFolderPath(path)
+    setSelectedId(undefined)
+    setSelectedFileId(undefined)
+  }
 
   return (
     <div className="app-shell">
@@ -176,6 +276,57 @@ export default function App() {
             </div>
           </div>
 
+          {rootName && !isScanning && (
+            <section className="folder-browser" aria-label="Folder hierarchy">
+              <div className="folder-browser-heading">
+                <div>
+                  <div className="eyebrow">FOLDER HIERARCHY</div>
+                  <div className="folder-breadcrumbs">
+                    <button
+                      type="button"
+                      className={!activeFolderPath ? 'breadcrumb-button current' : 'breadcrumb-button'}
+                      onClick={() => navigateFolder('')}
+                    >
+                      {rootName}
+                    </button>
+                    {folderCrumbs.map((crumb, index) => (
+                      <span className="breadcrumb-part" key={crumb.path}>
+                        <span className="breadcrumb-separator">/</span>
+                        <button
+                          type="button"
+                          className={index === folderCrumbs.length - 1 ? 'breadcrumb-button current' : 'breadcrumb-button'}
+                          onClick={() => navigateFolder(crumb.path)}
+                          title={crumb.sourceName !== crumb.name ? `Source folder: ${crumb.sourceName}` : undefined}
+                        >
+                          {crumb.name}
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <span className="folder-scope-count">{matchingScopeCount} model{matchingScopeCount === 1 ? '' : 's'} in scope</span>
+              </div>
+
+              {childFolders.length > 0 && (
+                <div className="folder-children">
+                  {childFolders.map((folder) => (
+                    <button
+                      type="button"
+                      className="folder-chip"
+                      key={folder.path}
+                      onClick={() => navigateFolder(folder.path)}
+                      title={`Browse source folder: ${folder.path}`}
+                    >
+                      <span className="folder-chip-icon" aria-hidden="true">▱</span>
+                      <span>{folder.name}</span>
+                      <strong>{folder.count}</strong>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           {!rootName && (
             <div className="empty-state">
               <div className="empty-icon">◇</div>
@@ -185,7 +336,7 @@ export default function App() {
             </div>
           )}
 
-          {rootName && !isScanning && filteredCollections.length === 0 && (
+          {rootName && !isScanning && matchingScopeCount === 0 && (
             <div className="empty-state compact">
               <h3>No matching models</h3>
               <p>Try a different search or file-type filter.</p>
@@ -205,10 +356,10 @@ export default function App() {
                 <div className="model-cover"><Cover collection={collection} /></div>
                 <div className="model-card-body">
                   <div className="model-title-row">
-                    <h3>{collection.name}</h3>
+                    <h3 title={collection.sourceName !== collection.name ? `Source folder: ${collection.sourceName}` : collection.name}>{collection.name}</h3>
                     <span>{collection.files.length}</span>
                   </div>
-                  <div className="folder-path">{collection.folderPath || 'Library root'}</div>
+                  <div className="folder-path" title={collection.folderPath || rootName || 'Selected folder'}>{collection.folderPath || 'Selected folder'}</div>
                   <div className="badges">
                     {Array.from(new Set(collection.files.map((file) => file.extension))).slice(0, 5).map((ext) => (
                       <span key={ext} className={`file-badge file-${ext}`}>{ext.toUpperCase()}</span>
@@ -233,7 +384,7 @@ export default function App() {
             <div className="detail-heading">
               <div className="eyebrow">MODEL COLLECTION</div>
               <h2>{selected.name}</h2>
-              <p>{selected.folderPath || 'Library root'}</p>
+              <p><span className="detail-source-label">Source:</span> {selected.folderPath || rootName || 'Selected folder'}</p>
             </div>
 
             {selectedPreviewFile?.extension === 'stl' ? (

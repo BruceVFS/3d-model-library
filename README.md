@@ -10,6 +10,8 @@ This rebuild intentionally keeps the source library read-only. It does not renam
 - Recursive scanning
 - Supported file discovery: STL, 3MF, ZIP, JPG/JPEG, PNG, WEBP
 - Folder-based grouping into model collections
+- Root collection uses the selected folder name rather than a generic label
+- Lightweight folder hierarchy browser with breadcrumbs and subtree counts
 - Existing image covers
 - Locally generated STL thumbnails
 - Interactive STL detail preview (orbit/zoom/pan)
@@ -18,6 +20,13 @@ This rebuild intentionally keeps the source library read-only. It does not renam
 - Collection/file totals and scan progress
 - Associated-file list with size and modified date
 - Read-only source handling
+
+## Current grouping rule
+
+- Each folder containing supported files is currently treated as one model collection.
+- Files in the selected root folder form a root collection named after that selected folder.
+- Nested folder structure is preserved in catalogue paths and can be browsed without changing the source tree.
+- This is deliberately simple for now; nested model folders, multiple models in one folder, and manual regrouping remain future work.
 
 ## Not yet implemented
 
@@ -80,3 +89,15 @@ Planned after the core catalogue is stable:
 - Balanced
 
 These comparisons should use real slicer-derived time/material estimates. Any AI layer should be optional and explain/recommend trade-offs rather than inventing print figures.
+
+## Display names and navigation (Fix 04)
+
+The source folder structure remains authoritative and is never renamed or rewritten. The catalogue now stores a source folder name separately from its display name. Common download suffixes such as `-model_files` / `_model_files` are removed for display only, and slug-like folder names are made more readable.
+
+Folder navigation and model cards have distinct roles:
+
+- a direct child folder that contains deeper model collections is shown as a navigation branch;
+- a terminal direct child folder containing supported files is shown as a model card;
+- when a search is active, matching descendant collections are shown so search remains useful across the current branch.
+
+These rules are deterministic and are intended to remain visible and manually overridable in a later release.
