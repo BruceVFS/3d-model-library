@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.vite/
+*.log
+
+# Local catalogue/cache data (never commit real library data)
+data/
+cache/
+thumbnails/
+library/
+test-library/
+
+# Local environment/settings
+.env
+.env.*
+!.env.example
