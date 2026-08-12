@@ -12,6 +12,12 @@ import {
   type ScanProgress,
   type SupportedExtension,
 } from './lib/library'
+import {
+  chooseAndScanDesktopLibrary,
+  isDesktopApp,
+  openDesktopContainingFolder,
+  revealDesktopFile,
+} from './lib/platform'
 
 const FILTERS: Array<{ value: 'all' | SupportedExtension; label: string }> = [
   { value: 'all', label: 'All files' },
@@ -54,6 +60,7 @@ function FileThumbnail({ file }: { file: LibraryFile }) {
 
 export default function App() {
   const [rootName, setRootName] = useState<string>()
+  const [rootPath, setRootPath] = useState<string>()
   const [files, setFiles] = useState<LibraryFile[]>([])
   const [progress, setProgress] = useState<ScanProgress>()
   const [isScanning, setIsScanning] = useState(false)
@@ -65,6 +72,7 @@ export default function App() {
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
+  const desktopMode = isDesktopApp()
 
   const collections = useMemo(() => groupIntoCollections(files, rootName), [files, rootName])
   const possibleDuplicates = useMemo(() => findPossibleDuplicates(files), [files])
@@ -221,22 +229,46 @@ export default function App() {
   }, [isPreviewExpanded])
 
   const chooseFolder = async () => {
-    if (!('showDirectoryPicker' in window)) {
-      setScanError('Folder access requires Chrome or Edge with the File System Access API.')
+    if (!desktopMode && !('showDirectoryPicker' in window)) {
+      setScanError('Folder access requires the desktop app, or Chrome/Edge with the File System Access API.')
       return
     }
 
     try {
       setScanError(undefined)
-      const root = await window.showDirectoryPicker({ mode: 'read', id: '3d-model-library' })
-      setRootName(root.name)
       setFiles([])
       setSelectedId(undefined)
       setSelectedFileId(undefined)
       setActiveFolderPath('')
       setIsPreviewExpanded(false)
       setDuplicatesOnly(false)
+      setProgress(undefined)
       setIsScanning(true)
+
+      if (desktopMode) {
+        setProgress({ folders: 0, filesVisited: 0, supportedFiles: 0, currentPath: 'Waiting for folder selection…' })
+        const scan = await chooseAndScanDesktopLibrary()
+        if (!scan) return
+
+        setRootName(scan.rootName)
+        setRootPath(scan.rootPath)
+        setFiles(scan.files.map((file) => ({
+          ...file,
+          id: file.relativePath.toLowerCase(),
+        })))
+        setProgress({
+          folders: scan.foldersVisited,
+          filesVisited: scan.filesVisited,
+          supportedFiles: scan.files.length,
+          currentPath: 'Complete',
+        })
+        if (scan.warnings.length > 0) console.warn('Scan warnings', scan.warnings)
+        return
+      }
+
+      const root = await window.showDirectoryPicker({ mode: 'read', id: '3d-model-library' })
+      setRootName(root.name)
+      setRootPath(undefined)
       const discovered = await scanDirectory(root, setProgress)
       setFiles(discovered)
     } catch (error) {
@@ -245,6 +277,31 @@ export default function App() {
       setScanError(error instanceof Error ? error.message : 'Unable to scan the selected folder.')
     } finally {
       setIsScanning(false)
+    }
+  }
+
+  const openCollectionFolder = async (collection: ModelCollection) => {
+    const representativeFile = collection.files[0]
+    if (!desktopMode || !representativeFile?.nativePath) return
+
+    try {
+      setScanError(undefined)
+      await openDesktopContainingFolder(representativeFile)
+    } catch (error) {
+      console.error(error)
+      setScanError(error instanceof Error ? error.message : 'Unable to open the source folder.')
+    }
+  }
+
+  const revealSelectedFile = async () => {
+    if (!desktopMode || !selectedPreviewFile?.nativePath) return
+
+    try {
+      setScanError(undefined)
+      await revealDesktopFile(selectedPreviewFile)
+    } catch (error) {
+      console.error(error)
+      setScanError(error instanceof Error ? error.message : 'Unable to reveal the selected file.')
     }
   }
 
@@ -264,7 +321,7 @@ export default function App() {
           <div className="brand-mark" aria-hidden="true">3D</div>
           <div>
             <h1>Model Library</h1>
-            <p>Local-first catalogue</p>
+            <p>Local-first catalogue{desktopMode ? ' · Windows desktop' : ' · Web'}</p>
           </div>
         </div>
         <button className="primary-button" onClick={chooseFolder} disabled={isScanning}>
@@ -277,7 +334,7 @@ export default function App() {
           <div className="hero-row">
             <div>
               <div className="eyebrow">SOURCE LIBRARY</div>
-              <h2>{rootName ?? 'No folder selected'}</h2>
+              <h2 title={rootPath}>{rootName ?? 'No folder selected'}</h2>
               <p className="muted">
                 {rootName
                   ? 'Your source files remain in place. The catalogue only reads them.'
@@ -417,21 +474,47 @@ export default function App() {
             {filteredCollections.map((collection) => {
               const duplicateCount = collectionDuplicateCount(collection)
               return (
-              <button
+              <article
                 key={collection.id}
                 className={[
                   'model-card',
                   collection.kind === 'loose-root' ? 'loose-files-card' : '',
                   selectedId === collection.id ? 'selected' : '',
                 ].filter(Boolean).join(' ')}
+                role="button"
+                tabIndex={0}
                 onClick={() => {
                   setSelectedId(collection.id)
                   setSelectedFileId(undefined)
                   setIsPreviewExpanded(false)
                 }}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setSelectedId(collection.id)
+                    setSelectedFileId(undefined)
+                    setIsPreviewExpanded(false)
+                  }
+                }}
               >
                 <div className="model-cover">
                   <Cover collection={collection} />
+                  {desktopMode && collection.files[0]?.nativePath && (
+                    <button
+                      type="button"
+                      className="card-folder-action"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void openCollectionFolder(collection)
+                      }}
+                      title="Open source folder in Windows Explorer"
+                      aria-label={`Open source folder for ${collection.name}`}
+                    >
+                      <span aria-hidden="true">▣</span>
+                      <span>Open folder</span>
+                    </button>
+                  )}
                   {duplicateCount > 0 && (
                     <span className="duplicate-card-badge" title={`${duplicateCount} file${duplicateCount === 1 ? '' : 's'} in this collection have possible duplicate matches`}>
                       POSSIBLE DUP{duplicateCount === 1 ? '' : ` · ${duplicateCount} FILES`}
@@ -453,7 +536,7 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-              </button>
+              </article>
               )
             })}
           </div>
@@ -473,7 +556,12 @@ export default function App() {
             <div className="detail-heading">
               <div className="eyebrow">{selected.kind === 'loose-root' ? 'LOOSE LIBRARY FILES' : 'MODEL COLLECTION'}</div>
               <h2>{selected.name}</h2>
-              <p><span className="detail-source-label">Source:</span> {selected.kind === 'loose-root' ? `${rootName ?? 'Selected folder'} (selected library root)` : selected.folderPath || rootName || 'Selected folder'}</p>
+              <p title={rootPath}><span className="detail-source-label">Source:</span> {selected.kind === 'loose-root' ? `${rootName ?? 'Selected folder'} (selected library root)` : selected.folderPath || rootName || 'Selected folder'}</p>
+              {desktopMode && selected.files[0]?.nativePath && (
+                <button type="button" className="detail-source-action" onClick={() => void openCollectionFolder(selected)}>
+                  Open source folder
+                </button>
+              )}
             </div>
 
             <div className="detail-preview-stage">
@@ -536,6 +624,11 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              {desktopMode && selectedPreviewFile?.nativePath && (
+                <button type="button" className="reveal-selected-file" onClick={() => void revealSelectedFile()}>
+                  Reveal selected file in Explorer
+                </button>
+              )}
             </section>
 
             {selectedPreviewFile && selectedDuplicateOthers.length > 0 && (

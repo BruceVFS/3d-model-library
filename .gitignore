@@ -3,14 +3,17 @@ dist/
 .vite/
 *.log
 
-# Local catalogue/cache data (never commit real library data)
+# Tauri / Rust build output
+src-tauri/target/
+
+# Local catalogue/cache data
 data/
 cache/
 thumbnails/
 library/
 test-library/
 
-# Local environment/settings
+# Environment/local settings
 .env
 .env.*
 !.env.example

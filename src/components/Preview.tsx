@@ -3,18 +3,38 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import type { LibraryFile } from '../lib/library'
+import { isDesktopApp, readDesktopFile } from '../lib/platform'
 
 const thumbnailCache = new Map<string, string>()
 
-async function loadGeometry(handle: FileSystemFileHandle) {
+function previewCacheKey(file: LibraryFile) {
+  return `${file.nativePath ?? file.id}:${file.size}:${file.lastModified}`
+}
+
+async function readLibraryFile(file: LibraryFile): Promise<ArrayBuffer> {
+  if (file.nativePath && isDesktopApp()) {
+    return readDesktopFile(file.nativePath)
+  }
+
+  if (!file.handle) throw new Error('No readable file source is available.')
+
   // Deliberately invoke getFile on its owning handle; do not destructure it.
-  const file = await handle.getFile()
-  const buffer = await file.arrayBuffer()
+  const browserFile = await file.handle.getFile()
+  return browserFile.arrayBuffer()
+}
+
+async function loadGeometry(file: LibraryFile) {
+  const buffer = await readLibraryFile(file)
   const geometry = new STLLoader().parse(buffer)
   geometry.computeVertexNormals()
   geometry.center()
   geometry.computeBoundingBox()
   return geometry
+}
+
+function imageMimeType(file: LibraryFile) {
+  if (file.extension === 'jpg' || file.extension === 'jpeg') return 'image/jpeg'
+  return `image/${file.extension}`
 }
 
 function fitCamera(camera: THREE.PerspectiveCamera, geometry: THREE.BufferGeometry) {
@@ -51,10 +71,10 @@ export function ImagePreview({ file }: { file: LibraryFile }) {
     let url: string | undefined
     let cancelled = false
 
-    file.handle
-      .getFile()
-      .then((blob) => {
+    readLibraryFile(file)
+      .then((buffer) => {
         if (cancelled) return
+        const blob = new Blob([buffer], { type: imageMimeType(file) })
         url = URL.createObjectURL(blob)
         setSrc(url)
       })
@@ -70,14 +90,15 @@ export function ImagePreview({ file }: { file: LibraryFile }) {
 }
 
 export function StlThumbnail({ file }: { file: LibraryFile }) {
-  const [src, setSrc] = useState<string | undefined>(() => thumbnailCache.get(file.id))
+  const cacheKey = previewCacheKey(file)
+  const [src, setSrc] = useState<string | undefined>(() => thumbnailCache.get(cacheKey))
 
   useEffect(() => {
     if (src) return
     let cancelled = false
 
     const render = async () => {
-      const geometry = await loadGeometry(file.handle)
+      const geometry = await loadGeometry(file)
       const canvas = document.createElement('canvas')
       canvas.width = 560
       canvas.height = 400
@@ -102,7 +123,7 @@ export function StlThumbnail({ file }: { file: LibraryFile }) {
       renderer.render(scene, camera)
 
       const dataUrl = canvas.toDataURL('image/webp', 0.86)
-      thumbnailCache.set(file.id, dataUrl)
+      thumbnailCache.set(cacheKey, dataUrl)
 
       geometry.dispose()
       material.dispose()
@@ -119,7 +140,7 @@ export function StlThumbnail({ file }: { file: LibraryFile }) {
     return () => {
       cancelled = true
     }
-  }, [file, src])
+  }, [cacheKey, file, src])
 
   return src ? <img className="cover-image" src={src} alt="" /> : <PreviewFallback label="Generating STL preview…" />
 }
@@ -142,7 +163,7 @@ export function StlViewer({ file, showReset = false }: { file: LibraryFile; show
     let observer: ResizeObserver | undefined
 
     const initialise = async () => {
-      geometry = await loadGeometry(file.handle)
+      geometry = await loadGeometry(file)
       if (disposed) {
         geometry.dispose()
         return

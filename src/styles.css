@@ -425,3 +425,75 @@ button { color: inherit; }
   .filter-button.duplicate-filter { margin-left: 0; }
   .duplicate-summary { align-items: flex-start; flex-direction: column; gap: 3px; }
 }
+
+/* Fix 08: Windows desktop shell and source-location actions. */
+.model-card:focus-visible {
+  outline: 2px solid #8fb2ff;
+  outline-offset: 3px;
+}
+
+.card-folder-action {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(106, 136, 196, .58);
+  border-radius: 7px;
+  padding: 5px 7px;
+  background: rgba(13, 19, 28, .9);
+  color: #c7d8fb;
+  font: inherit;
+  font-size: 8px;
+  font-weight: 750;
+  cursor: pointer;
+  opacity: .8;
+  backdrop-filter: blur(7px);
+  transition: opacity .15s ease, background .15s ease, border-color .15s ease;
+}
+.card-folder-action:hover,
+.card-folder-action:focus-visible {
+  opacity: 1;
+  background: #172339;
+  border-color: #7c9fe2;
+  color: #eef4ff;
+  outline: none;
+}
+.model-card:hover .card-folder-action,
+.model-card.selected .card-folder-action { opacity: 1; }
+
+.detail-source-action,
+.reveal-selected-file {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #34465f;
+  border-radius: 7px;
+  background: #131b27;
+  color: #bcd0f5;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.detail-source-action {
+  margin-top: 9px;
+  padding: 7px 9px;
+}
+.reveal-selected-file {
+  width: 100%;
+  margin-top: 9px;
+  padding: 8px 10px;
+}
+.detail-source-action:hover,
+.reveal-selected-file:hover {
+  background: #1b2a40;
+  border-color: #6384bd;
+  color: #edf4ff;
+}
+
+@media (max-width: 760px) {
+  .card-folder-action span:last-child { display: none; }
+}

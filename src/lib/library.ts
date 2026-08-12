@@ -9,7 +9,8 @@ export type LibraryFile = {
   folderPath: string
   size: number
   lastModified: number
-  handle: FileSystemFileHandle
+  handle?: FileSystemFileHandle
+  nativePath?: string
 }
 
 export type CollectionKind = 'model' | 'loose-root'
