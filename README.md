@@ -1,6 +1,6 @@
-# 3D Model Library
+# Modelarium 3D Model Library
 
-A local-first visual catalogue for an existing Windows 3D-printing model collection.
+Modelarium is a local-first visual catalogue for an existing 3D-printing model collection. **Your 3D models, finally easy to rediscover.**
 
 The source library is read-only by design. The app does not rename, move, overwrite, extract, delete or upload model files. The Windows desktop build can open the containing folder or reveal a selected file in Explorer so deliberate file management happens outside the catalogue.
 
@@ -98,9 +98,19 @@ A `Cargo.lock` file will be generated during the first Rust build. Commit it so 
 
 ## Production web build
 
+For a root-domain/local build:
+
 ```powershell
 npm run build
 ```
+
+For the temporary hosted test at `https://www.faceless.co.za/modelarium/`, build with the required subdirectory base path:
+
+```powershell
+npm run build:hosted-test
+```
+
+Upload the **contents** of `dist/` into the web server's `/modelarium/` directory, preserving the generated `assets/` and `images/` subdirectories. See `HOSTING-MODELARIUM.md`.
 
 ## Important File System Access note
 
@@ -141,4 +151,4 @@ The sticky application header always identifies the runtime:
 * **Windows Desktop** — the React/Vite frontend running inside Tauri with native Windows capabilities.
 * **Hosted Web** — the same frontend served from a non-local web host.
 
-The introductory product panel explains the catalogue purpose and disappears after a library is chosen. The **About** control can reopen or hide it without changing the selected library.
+The introductory product panel explains the catalogue purpose and disappears after a library is chosen. **About** opens product/privacy/contact information and the planned Print Analysis direction. Theme preference supports **System**, **Light** and **Dark** and is stored locally when browser storage is available.

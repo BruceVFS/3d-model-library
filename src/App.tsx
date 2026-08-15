@@ -22,6 +22,19 @@ import {
 
 const APP_VERSION = packageJson.version
 
+type ThemePreference = 'system' | 'light' | 'dark'
+const THEME_STORAGE_KEY = 'modelarium-theme'
+
+function readThemePreference(): ThemePreference {
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored
+  } catch {
+    // Local storage can be unavailable in restricted browser contexts.
+  }
+  return 'system'
+}
+
 function getRuntimeLabel(desktopMode: boolean) {
   if (desktopMode) return 'Windows Desktop'
 
@@ -84,6 +97,8 @@ export default function App() {
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
   const [showIntro, setShowIntro] = useState(true)
+  const [isAboutOpen, setIsAboutOpen] = useState(false)
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference())
   const desktopMode = isDesktopApp()
   const runtimeLabel = getRuntimeLabel(desktopMode)
 
@@ -225,6 +240,35 @@ export default function App() {
   )
 
   useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const applyTheme = () => {
+      const resolved = themePreference === 'system' ? (media.matches ? 'dark' : 'light') : themePreference
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.style.colorScheme = resolved
+    }
+
+    applyTheme()
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, themePreference)
+    } catch {
+      // Theme persistence is optional; the selected theme still applies for this session.
+    }
+
+    if (themePreference !== 'system') return
+    media.addEventListener('change', applyTheme)
+    return () => media.removeEventListener('change', applyTheme)
+  }, [themePreference])
+
+  useEffect(() => {
+    if (!isAboutOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsAboutOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isAboutOpen])
+
+  useEffect(() => {
     if (!isPreviewExpanded) return
 
     const previousOverflow = document.body.style.overflow
@@ -333,20 +377,32 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">3D</div>
+          <div className="brand-mark" aria-hidden="true">M3D</div>
           <div>
-            <h1>Model Library</h1>
+            <h1>Modelarium</h1>
             <p>
-              Local-first catalogue · <span className="app-version">v{APP_VERSION}</span> · <span className="runtime-label">{runtimeLabel}</span>
+              3D Model Library · <span className="app-version">v{APP_VERSION}</span> · <span className="runtime-label">{runtimeLabel}</span>
             </p>
           </div>
         </div>
         <div className="topbar-actions">
+          <label className="theme-control" title="Colour theme">
+            <span aria-hidden="true">◐</span>
+            <select
+              aria-label="Colour theme"
+              value={themePreference}
+              onChange={(event) => setThemePreference(event.currentTarget.value as ThemePreference)}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
           <button
             type="button"
             className="secondary-button"
-            onClick={() => setShowIntro((value) => !value)}
-            aria-expanded={showIntro}
+            onClick={() => setIsAboutOpen(true)}
+            aria-haspopup="dialog"
           >
             About
           </button>
@@ -359,14 +415,14 @@ export default function App() {
       <main className="main-layout">
         <section className="catalogue-panel">
           {showIntro && (
-            <section className="app-intro" aria-label="About Model Library">
+            <section className="app-intro" aria-label="Modelarium 3D Model Library introduction">
               <div className="app-intro-copy">
-                <div className="eyebrow">WHY THIS EXISTS</div>
+                <div className="eyebrow">MODELARIUM 3D MODEL LIBRARY</div>
                 <h3>Your 3D models, finally easy to rediscover.</h3>
                 <p>
-                  Turn your existing folder collection of STL, 3MF, ZIP and image files into a visual catalogue without reorganising your source files.
+                  Modelarium turns your existing folder collection of STL, 3MF, ZIP and image files into a visual catalogue without reorganising your source files.
                 </p>
-                <div className="app-value-strip" aria-label="Model Library benefits">
+                <div className="app-value-strip" aria-label="Modelarium benefits">
                   <span>Browse visually</span>
                   <span>Keep your folders</span>
                   <span>Preview in 3D</span>
@@ -714,6 +770,61 @@ export default function App() {
           </aside>
         )}
 
+        {isAboutOpen && (
+          <div
+            className="about-modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setIsAboutOpen(false)
+            }}
+          >
+            <section className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-modelarium-title">
+              <button type="button" className="about-modal-close" onClick={() => setIsAboutOpen(false)} aria-label="Close About">×</button>
+              <div className="eyebrow">MODELARIUM 3D MODEL LIBRARY</div>
+              <h2 id="about-modelarium-title">Your 3D models, finally easy to rediscover.</h2>
+              <p className="about-lead">
+                Modelarium turns an existing collection of STL, 3MF, ZIP and image files into a visual catalogue while preserving the folder structure you already use.
+              </p>
+
+              <div className="about-grid">
+                <section>
+                  <h3>Local-first by design</h3>
+                  <p>Source files are read only by the catalogue. Modelarium does not rename, move, delete, overwrite, extract or upload your model files.</p>
+                </section>
+                <section>
+                  <h3>Local React edition</h3>
+                  <p>
+                    A downloadable local React edition is available. For access or more information, contact
+                    {' '}<a href="mailto:bruce@sutherand.co.za">bruce@sutherand.co.za</a>.
+                  </p>
+                </section>
+                <section className="about-wide">
+                  <h3>Coming later — Print Analysis</h3>
+                  <p>
+                    The planned Print Analysis feature will compare Fast, Strength Optimised, Quality Optimised and Balanced print strategies using real slicer-derived time and material estimates. An optional AI layer may later explain the trade-offs and recommend a strategy without inventing the underlying figures.
+                  </p>
+                </section>
+              </div>
+
+              <footer className="about-footer">
+                <button
+                  type="button"
+                  className="about-intro-action"
+                  onClick={() => {
+                    setIsAboutOpen(false)
+                    setShowIntro(true)
+                  }}
+                >
+                  Show introduction
+                </button>
+                <div className="about-footer-meta">
+                  <span>v{APP_VERSION} · {runtimeLabel}</span>
+                  <a href="https://modelarium.co.za" target="_blank" rel="noreferrer">modelarium.co.za</a>
+                </div>
+              </footer>
+            </section>
+          </div>
+        )}
         {isPreviewExpanded && selected && selectedPreviewFile && canExpandPreview && (
           <div
             className="preview-modal-backdrop"

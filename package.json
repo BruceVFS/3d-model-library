@@ -1,11 +1,12 @@
 {
   "name": "3d-model-library",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:hosted-test": "tsc -b && vite build --base=/modelarium/",
     "lint": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri"
