@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import packageJson from '../package.json'
 import { ImagePreview, PreviewFallback, StlThumbnail, StlViewer } from './components/Preview'
 import {
   duplicateSignature,
@@ -18,6 +19,16 @@ import {
   openDesktopContainingFolder,
   revealDesktopFile,
 } from './lib/platform'
+
+const APP_VERSION = packageJson.version
+
+function getRuntimeLabel(desktopMode: boolean) {
+  if (desktopMode) return 'Windows Desktop'
+
+  const hostname = window.location.hostname.toLowerCase()
+  const localHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+  return localHosts.has(hostname) || hostname.endsWith('.localhost') ? 'Local Web' : 'Hosted Web'
+}
 
 const FILTERS: Array<{ value: 'all' | SupportedExtension; label: string }> = [
   { value: 'all', label: 'All files' },
@@ -72,7 +83,9 @@ export default function App() {
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
+  const [showIntro, setShowIntro] = useState(true)
   const desktopMode = isDesktopApp()
+  const runtimeLabel = getRuntimeLabel(desktopMode)
 
   const collections = useMemo(() => groupIntoCollections(files, rootName), [files, rootName])
   const possibleDuplicates = useMemo(() => findPossibleDuplicates(files), [files])
@@ -251,6 +264,7 @@ export default function App() {
         if (!scan) return
 
         setRootName(scan.rootName)
+        setShowIntro(false)
         setRootPath(scan.rootPath)
         setFiles(scan.files.map((file) => ({
           ...file,
@@ -268,6 +282,7 @@ export default function App() {
 
       const root = await window.showDirectoryPicker({ mode: 'read', id: '3d-model-library' })
       setRootName(root.name)
+      setShowIntro(false)
       setRootPath(undefined)
       const discovered = await scanDirectory(root, setProgress)
       setFiles(discovered)
@@ -321,16 +336,55 @@ export default function App() {
           <div className="brand-mark" aria-hidden="true">3D</div>
           <div>
             <h1>Model Library</h1>
-            <p>Local-first catalogue{desktopMode ? ' · Windows desktop' : ' · Web'}</p>
+            <p>
+              Local-first catalogue · <span className="app-version">v{APP_VERSION}</span> · <span className="runtime-label">{runtimeLabel}</span>
+            </p>
           </div>
         </div>
-        <button className="primary-button" onClick={chooseFolder} disabled={isScanning}>
-          {isScanning ? 'Scanning…' : rootName ? 'Choose another folder' : 'Choose library folder'}
-        </button>
+        <div className="topbar-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setShowIntro((value) => !value)}
+            aria-expanded={showIntro}
+          >
+            About
+          </button>
+          <button className="primary-button" onClick={chooseFolder} disabled={isScanning}>
+            {isScanning ? 'Scanning…' : rootName ? 'Choose another folder' : 'Choose library folder'}
+          </button>
+        </div>
       </header>
 
       <main className="main-layout">
         <section className="catalogue-panel">
+          {showIntro && (
+            <section className="app-intro" aria-label="About Model Library">
+              <div className="app-intro-copy">
+                <div className="eyebrow">WHY THIS EXISTS</div>
+                <h3>Your 3D models, finally easy to rediscover.</h3>
+                <p>
+                  Turn your existing folder collection of STL, 3MF, ZIP and image files into a visual catalogue without reorganising your source files.
+                </p>
+                <div className="app-value-strip" aria-label="Model Library benefits">
+                  <span>Browse visually</span>
+                  <span>Keep your folders</span>
+                  <span>Preview in 3D</span>
+                  <span>Spot possible duplicates</span>
+                </div>
+                {rootName ? (
+                  <button type="button" className="secondary-button intro-action" onClick={() => setShowIntro(false)}>
+                    Continue to catalogue
+                  </button>
+                ) : (
+                  <button className="primary-button large" onClick={chooseFolder} disabled={isScanning}>
+                    {isScanning ? 'Scanning…' : 'Choose library folder'}
+                  </button>
+                )}
+              </div>
+              <img src={`${import.meta.env.BASE_URL}images/model-library-intro.png`} alt="Abstract 3D model catalogue preview" />
+            </section>
+          )}
           <div className="hero-row">
             <div>
               <div className="eyebrow">SOURCE LIBRARY</div>
@@ -338,7 +392,7 @@ export default function App() {
               <p className="muted">
                 {rootName
                   ? 'Your source files remain in place. The catalogue only reads them.'
-                  : 'Choose a representative test folder to begin.'}
+                  : 'Choose your 3D model library folder to begin.'}
               </p>
             </div>
 
@@ -454,7 +508,7 @@ export default function App() {
             </section>
           )}
 
-          {!rootName && (
+          {!rootName && !showIntro && (
             <div className="empty-state">
               <div className="empty-icon">◇</div>
               <h3>Your models, visually organised</h3>
@@ -678,7 +732,7 @@ export default function App() {
                 <div>
                   <div className="eyebrow">EXPANDED PREVIEW</div>
                   <h2>{selected.name}</h2>
-                  <p>{selectedPreviewFile.name}</p>
+                  <p>{selectedPreviewFile.name} · v{APP_VERSION} · {runtimeLabel}</p>
                 </div>
                 <button
                   type="button"

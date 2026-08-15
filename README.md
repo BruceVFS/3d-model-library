@@ -129,3 +129,16 @@ Planned after the core catalogue is stable:
 - Balanced
 
 These comparisons should use real slicer-derived time/material estimates. Any AI layer should be optional and explain/recommend trade-offs rather than inventing print figures.
+
+
+## Versioning and runtime identity
+
+Model Library uses semantic versioning (`MAJOR.MINOR.PATCH`) while it evolves toward a first production release. `package.json` is the source of truth for the application version, and the UI reads that value at build time so the displayed version stays aligned with the codebase. Git release tags should mirror released application versions (for example `v0.1.0`, `v0.2.0`).
+
+The sticky application header always identifies the runtime:
+
+* **Local Web** — React/Vite running locally in Chrome or Edge.
+* **Windows Desktop** — the React/Vite frontend running inside Tauri with native Windows capabilities.
+* **Hosted Web** — the same frontend served from a non-local web host.
+
+The introductory product panel explains the catalogue purpose and disappears after a library is chosen. The **About** control can reopen or hide it without changing the selected library.
