@@ -23,6 +23,7 @@ import {
 const APP_VERSION = packageJson.version
 
 type ThemePreference = 'system' | 'light' | 'dark'
+
 const THEME_STORAGE_KEY = 'modelarium-theme'
 
 function readThemePreference(): ThemePreference {
@@ -32,6 +33,7 @@ function readThemePreference(): ThemePreference {
   } catch {
     // Local storage can be unavailable in restricted browser contexts.
   }
+
   return 'system'
 }
 
@@ -64,6 +66,7 @@ function Cover({ collection }: { collection: ModelCollection }) {
   if (['jpg', 'jpeg', 'png', 'webp'].includes(cover.extension)) {
     return <ImagePreview file={cover} />
   }
+
   if (cover.extension === 'stl') return <StlThumbnail file={cover} />
   return <PreviewFallback label={`${cover.extension.toUpperCase()} model`} />
 }
@@ -76,9 +79,11 @@ function FileThumbnail({ file }: { file: LibraryFile }) {
   if (file.extension === 'stl') {
     return <StlThumbnail file={file} />
   }
+
   if (['jpg', 'jpeg', 'png', 'webp'].includes(file.extension)) {
     return <ImagePreview file={file} />
   }
+
   return <PreviewFallback label={file.extension.toUpperCase()} />
 }
 
@@ -99,8 +104,14 @@ export default function App() {
   const [showIntro, setShowIntro] = useState(true)
   const [isAboutOpen, setIsAboutOpen] = useState(false)
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference())
+
   const desktopMode = isDesktopApp()
   const runtimeLabel = getRuntimeLabel(desktopMode)
+  const supportsDirectoryAccess = desktopMode || 'showDirectoryPicker' in window
+  const isFirefox = !desktopMode && navigator.userAgent.includes('Firefox/')
+  const folderAccessMessage = isFirefox
+    ? "Firefox doesn't support Modelarium's direct library access. Use Modelarium Desktop for the full experience, or open Modelarium in Chrome or Edge."
+    : "This browser doesn't support Modelarium's direct library access. Use Modelarium Desktop for the full experience, or open Modelarium in Chrome or Edge."
 
   const collections = useMemo(() => groupIntoCollections(files, rootName), [files, rootName])
   const possibleDuplicates = useMemo(() => findPossibleDuplicates(files), [files])
@@ -176,7 +187,6 @@ export default function App() {
 
   const directCollections = useMemo(() => {
     const prefix = activeFolderPath ? `${activeFolderPath}/` : ''
-
     return collections.filter((collection) => {
       if (collection.folderPath === activeFolderPath) return true
       if (!collection.folderPath.startsWith(prefix)) return false
@@ -198,6 +208,7 @@ export default function App() {
       if (!collectionMatchesType(collection, typeFilter)) return false
       if (duplicatesOnly && collectionDuplicateCount(collection) === 0) return false
       if (!needle) return true
+
       return (
         collection.name.toLowerCase().includes(needle) ||
         collection.sourceName.toLowerCase().includes(needle) ||
@@ -213,6 +224,7 @@ export default function App() {
       if (duplicatesOnly && collectionDuplicateCount(collection) === 0) return false
       const needle = query.trim().toLowerCase()
       if (!needle) return true
+
       return (
         collection.name.toLowerCase().includes(needle) ||
         collection.sourceName.toLowerCase().includes(needle) ||
@@ -225,7 +237,6 @@ export default function App() {
   const matchingScopeCount = matchingScopeCollections.length
   const matchingModelCount = matchingScopeCollections.filter((collection) => collection.kind === 'model').length
   const hasMatchingLooseRootFiles = matchingScopeCollections.some((collection) => collection.kind === 'loose-root')
-
   const selected = collections.find((collection) => collection.id === selectedId)
   const defaultPreviewFile = selected?.geometryFiles.find((file) => file.extension === 'stl') ?? selected?.cover
   const selectedPreviewFile = selected?.files.find((file) => file.id === selectedFileId) ?? defaultPreviewFile
@@ -233,14 +244,15 @@ export default function App() {
     ? possibleDuplicates.get(duplicateSignature(selectedPreviewFile))
     : undefined
   const selectedDuplicateOthers = selectedDuplicateMatches?.filter((file) => file.id !== selectedPreviewFile?.id) ?? []
-
   const canExpandPreview = Boolean(
     selectedPreviewFile &&
-    (selectedPreviewFile.extension === 'stl' || ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension)),
+      (selectedPreviewFile.extension === 'stl' ||
+        ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension)),
   )
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
+
     const applyTheme = () => {
       const resolved = themePreference === 'system' ? (media.matches ? 'dark' : 'light') : themePreference
       document.documentElement.dataset.theme = resolved
@@ -248,6 +260,7 @@ export default function App() {
     }
 
     applyTheme()
+
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, themePreference)
     } catch {
@@ -255,15 +268,18 @@ export default function App() {
     }
 
     if (themePreference !== 'system') return
+
     media.addEventListener('change', applyTheme)
     return () => media.removeEventListener('change', applyTheme)
   }, [themePreference])
 
   useEffect(() => {
     if (!isAboutOpen) return
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setIsAboutOpen(false)
     }
+
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isAboutOpen])
@@ -286,8 +302,8 @@ export default function App() {
   }, [isPreviewExpanded])
 
   const chooseFolder = async () => {
-    if (!desktopMode && !('showDirectoryPicker' in window)) {
-      setScanError('Folder access requires the desktop app, or Chrome/Edge with the File System Access API.')
+    if (!supportsDirectoryAccess) {
+      setScanError(folderAccessMessage)
       return
     }
 
@@ -310,10 +326,12 @@ export default function App() {
         setRootName(scan.rootName)
         setShowIntro(false)
         setRootPath(scan.rootPath)
-        setFiles(scan.files.map((file) => ({
-          ...file,
-          id: file.relativePath.toLowerCase(),
-        })))
+        setFiles(
+          scan.files.map((file) => ({
+            ...file,
+            id: file.relativePath.toLowerCase(),
+          })),
+        )
         setProgress({
           folders: scan.foldersVisited,
           filesVisited: scan.filesVisited,
@@ -381,10 +399,12 @@ export default function App() {
           <div>
             <h1>Modelarium</h1>
             <p>
-              3D Model Library · <span className="app-version">v{APP_VERSION}</span> · <span className="runtime-label">{runtimeLabel}</span>
+              3D Model Library · <span className="app-version">v{APP_VERSION}</span> ·{' '}
+              <span className="runtime-label">{runtimeLabel}</span>
             </p>
           </div>
         </div>
+
         <div className="topbar-actions">
           <label className="theme-control" title="Colour theme">
             <span aria-hidden="true">◐</span>
@@ -398,6 +418,7 @@ export default function App() {
               <option value="dark">Dark</option>
             </select>
           </label>
+
           <button
             type="button"
             className="secondary-button"
@@ -406,7 +427,13 @@ export default function App() {
           >
             About
           </button>
-          <button className="primary-button" onClick={chooseFolder} disabled={isScanning}>
+
+          <button
+            className="primary-button"
+            onClick={chooseFolder}
+            disabled={isScanning || !supportsDirectoryAccess}
+            title={!supportsDirectoryAccess ? folderAccessMessage : undefined}
+          >
             {isScanning ? 'Scanning…' : rootName ? 'Choose another folder' : 'Choose library folder'}
           </button>
         </div>
@@ -420,27 +447,50 @@ export default function App() {
                 <div className="eyebrow">MODELARIUM 3D MODEL LIBRARY</div>
                 <h3>Your 3D models, finally easy to rediscover.</h3>
                 <p>
-                  Modelarium turns your existing folder collection of STL, 3MF, ZIP and image files into a visual catalogue without reorganising your source files.
+                  Modelarium turns your existing folder collection of STL, 3MF, ZIP and image files into a visual
+                  catalogue without reorganising your source files.
                 </p>
+
                 <div className="app-value-strip" aria-label="Modelarium benefits">
                   <span>Browse visually</span>
                   <span>Keep your folders</span>
                   <span>Preview in 3D</span>
                   <span>Spot possible duplicates</span>
                 </div>
+
                 {rootName ? (
-                  <button type="button" className="secondary-button intro-action" onClick={() => setShowIntro(false)}>
+                  <button
+                    type="button"
+                    className="secondary-button intro-action"
+                    onClick={() => setShowIntro(false)}
+                  >
                     Continue to catalogue
                   </button>
                 ) : (
-                  <button className="primary-button large" onClick={chooseFolder} disabled={isScanning}>
+                  <button
+                    className="primary-button large"
+                    onClick={chooseFolder}
+                    disabled={isScanning || !supportsDirectoryAccess}
+                    title={!supportsDirectoryAccess ? folderAccessMessage : undefined}
+                  >
                     {isScanning ? 'Scanning…' : 'Choose library folder'}
                   </button>
                 )}
+
+                {!supportsDirectoryAccess && (
+                  <p className="muted" role="status">
+                    {folderAccessMessage}
+                  </p>
+                )}
               </div>
-              <img src={`${import.meta.env.BASE_URL}images/model-library-intro.png`} alt="Abstract 3D model catalogue preview" />
+
+              <img
+                src={`${import.meta.env.BASE_URL}images/model-library-intro.png`}
+                alt="Abstract 3D model catalogue preview"
+              />
             </section>
           )}
+
           <div className="hero-row">
             <div>
               <div className="eyebrow">SOURCE LIBRARY</div>
@@ -448,7 +498,9 @@ export default function App() {
               <p className="muted">
                 {rootName
                   ? 'Your source files remain in place. The catalogue only reads them.'
-                  : 'Choose your 3D model library folder to begin.'}
+                  : supportsDirectoryAccess
+                    ? 'Choose your 3D model library folder to begin.'
+                    : folderAccessMessage}
               </p>
             </div>
 
@@ -481,6 +533,7 @@ export default function App() {
                 placeholder="Search models, folders and filenames"
               />
             </label>
+
             <div className="filter-strip" aria-label="File type filter">
               {FILTERS.map((filter) => (
                 <button
@@ -491,6 +544,7 @@ export default function App() {
                   {filter.label}
                 </button>
               ))}
+
               <button
                 type="button"
                 className={duplicatesOnly ? 'filter-button duplicate-filter active' : 'filter-button duplicate-filter'}
@@ -505,7 +559,9 @@ export default function App() {
 
           {rootName && !isScanning && possibleDuplicates.size > 0 && (
             <div className="duplicate-summary" role="status">
-              <strong>{possibleDuplicates.size} possible duplicate group{possibleDuplicates.size === 1 ? '' : 's'}</strong>
+              <strong>
+                {possibleDuplicates.size} possible duplicate group{possibleDuplicates.size === 1 ? '' : 's'}
+              </strong>
               <span>{duplicateFileCount} files share the same normalised filename and exact byte size.</span>
             </div>
           )}
@@ -523,6 +579,7 @@ export default function App() {
                     >
                       {rootName}
                     </button>
+
                     {folderCrumbs.map((crumb, index) => (
                       <span className="breadcrumb-part" key={crumb.path}>
                         <span className="breadcrumb-separator">/</span>
@@ -538,6 +595,7 @@ export default function App() {
                     ))}
                   </div>
                 </div>
+
                 <span className="folder-scope-count">
                   {matchingModelCount} model{matchingModelCount === 1 ? '' : 's'} in scope
                   {hasMatchingLooseRootFiles ? ' · root files available' : ''}
@@ -568,8 +626,19 @@ export default function App() {
             <div className="empty-state">
               <div className="empty-icon">◇</div>
               <h3>Your models, visually organised</h3>
-              <p>Select a folder. The app scans it recursively without moving, renaming, extracting or modifying anything.</p>
-              <button className="primary-button large" onClick={chooseFolder}>Choose library folder</button>
+              <p>
+                {supportsDirectoryAccess
+                  ? 'Select a folder. The app scans it recursively without moving, renaming, extracting or modifying anything.'
+                  : folderAccessMessage}
+              </p>
+              <button
+                className="primary-button large"
+                onClick={chooseFolder}
+                disabled={isScanning || !supportsDirectoryAccess}
+                title={!supportsDirectoryAccess ? folderAccessMessage : undefined}
+              >
+                Choose library folder
+              </button>
             </div>
           )}
 
@@ -583,70 +652,91 @@ export default function App() {
           <div className="gallery">
             {filteredCollections.map((collection) => {
               const duplicateCount = collectionDuplicateCount(collection)
+
               return (
-              <article
-                key={collection.id}
-                className={[
-                  'model-card',
-                  collection.kind === 'loose-root' ? 'loose-files-card' : '',
-                  selectedId === collection.id ? 'selected' : '',
-                ].filter(Boolean).join(' ')}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  setSelectedId(collection.id)
-                  setSelectedFileId(undefined)
-                  setIsPreviewExpanded(false)
-                }}
-                onKeyDown={(event) => {
-                  if (event.target !== event.currentTarget) return
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
+                <article
+                  key={collection.id}
+                  className={[
+                    'model-card',
+                    collection.kind === 'loose-root' ? 'loose-files-card' : '',
+                    selectedId === collection.id ? 'selected' : '',
+                  ].filter(Boolean).join(' ')}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
                     setSelectedId(collection.id)
                     setSelectedFileId(undefined)
                     setIsPreviewExpanded(false)
-                  }
-                }}
-              >
-                <div className="model-cover">
-                  <Cover collection={collection} />
-                  {desktopMode && collection.files[0]?.nativePath && (
-                    <button
-                      type="button"
-                      className="card-folder-action"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        void openCollectionFolder(collection)
-                      }}
-                      title="Open source folder in Windows Explorer"
-                      aria-label={`Open source folder for ${collection.name}`}
-                    >
-                      <span aria-hidden="true">▣</span>
-                      <span>Open folder</span>
-                    </button>
-                  )}
-                  {duplicateCount > 0 && (
-                    <span className="duplicate-card-badge" title={`${duplicateCount} file${duplicateCount === 1 ? '' : 's'} in this collection have possible duplicate matches`}>
-                      POSSIBLE DUP{duplicateCount === 1 ? '' : ` · ${duplicateCount} FILES`}
-                    </span>
-                  )}
-                </div>
-                <div className="model-card-body">
-                  <div className="model-title-row">
-                    <h3 title={collection.sourceName !== collection.name ? `Source folder: ${collection.sourceName}` : collection.name}>{collection.name}</h3>
-                    <span>{collection.files.length}</span>
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedId(collection.id)
+                      setSelectedFileId(undefined)
+                      setIsPreviewExpanded(false)
+                    }
+                  }}
+                >
+                  <div className="model-cover">
+                    <Cover collection={collection} />
+
+                    {desktopMode && collection.files[0]?.nativePath && (
+                      <button
+                        type="button"
+                        className="card-folder-action"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void openCollectionFolder(collection)
+                        }}
+                        title="Open source folder in Windows Explorer"
+                        aria-label={`Open source folder for ${collection.name}`}
+                      >
+                        <span aria-hidden="true">▣</span>
+                        <span>Open folder</span>
+                      </button>
+                    )}
+
+                    {duplicateCount > 0 && (
+                      <span
+                        className="duplicate-card-badge"
+                        title={`${duplicateCount} file${duplicateCount === 1 ? '' : 's'} in this collection have possible duplicate matches`}
+                      >
+                        POSSIBLE DUP{duplicateCount === 1 ? '' : ` · ${duplicateCount} FILES`}
+                      </span>
+                    )}
                   </div>
-                  <div className="folder-path" title={collection.folderPath || rootName || 'Selected folder'}>
-                    {collection.kind === 'loose-root' ? `${rootName ?? 'Selected folder'} library root` : collection.folderPath || 'Selected folder'}
+
+                  <div className="model-card-body">
+                    <div className="model-title-row">
+                      <h3
+                        title={
+                          collection.sourceName !== collection.name
+                            ? `Source folder: ${collection.sourceName}`
+                            : collection.name
+                        }
+                      >
+                        {collection.name}
+                      </h3>
+                      <span>{collection.files.length}</span>
+                    </div>
+
+                    <div className="folder-path" title={collection.folderPath || rootName || 'Selected folder'}>
+                      {collection.kind === 'loose-root'
+                        ? `${rootName ?? 'Selected folder'} library root`
+                        : collection.folderPath || 'Selected folder'}
+                    </div>
+
+                    <div className="badges">
+                      {collection.kind === 'loose-root' && <span className="collection-kind-badge">ROOT FILES</span>}
+                      {Array.from(new Set(collection.files.map((file) => file.extension)))
+                        .slice(0, 5)
+                        .map((ext) => (
+                          <span key={ext} className={`file-badge file-${ext}`}>{ext.toUpperCase()}</span>
+                        ))}
+                    </div>
                   </div>
-                  <div className="badges">
-                    {collection.kind === 'loose-root' && <span className="collection-kind-badge">ROOT FILES</span>}
-                    {Array.from(new Set(collection.files.map((file) => file.extension))).slice(0, 5).map((ext) => (
-                      <span key={ext} className={`file-badge file-${ext}`}>{ext.toUpperCase()}</span>
-                    ))}
-                  </div>
-                </div>
-              </article>
+                </article>
               )
             })}
           </div>
@@ -662,13 +752,28 @@ export default function App() {
                 setSelectedFileId(undefined)
                 setIsPreviewExpanded(false)
               }}
-            >×</button>
+            >
+              ×
+            </button>
+
             <div className="detail-heading">
-              <div className="eyebrow">{selected.kind === 'loose-root' ? 'LOOSE LIBRARY FILES' : 'MODEL COLLECTION'}</div>
+              <div className="eyebrow">
+                {selected.kind === 'loose-root' ? 'LOOSE LIBRARY FILES' : 'MODEL COLLECTION'}
+              </div>
               <h2>{selected.name}</h2>
-              <p title={rootPath}><span className="detail-source-label">Source:</span> {selected.kind === 'loose-root' ? `${rootName ?? 'Selected folder'} (selected library root)` : selected.folderPath || rootName || 'Selected folder'}</p>
+              <p title={rootPath}>
+                <span className="detail-source-label">Source:</span>{' '}
+                {selected.kind === 'loose-root'
+                  ? `${rootName ?? 'Selected folder'} (selected library root)`
+                  : selected.folderPath || rootName || 'Selected folder'}
+              </p>
+
               {desktopMode && selected.files[0]?.nativePath && (
-                <button type="button" className="detail-source-action" onClick={() => void openCollectionFolder(selected)}>
+                <button
+                  type="button"
+                  className="detail-source-action"
+                  onClick={() => void openCollectionFolder(selected)}
+                >
                   Open source folder
                 </button>
               )}
@@ -680,7 +785,9 @@ export default function App() {
               ) : selectedPreviewFile && ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension) ? (
                 <div className="detail-image"><ImagePreview file={selectedPreviewFile} /></div>
               ) : selectedPreviewFile ? (
-                <div className="detail-image"><PreviewFallback label={`${selectedPreviewFile.extension.toUpperCase()} preview not yet supported`} /></div>
+                <div className="detail-image">
+                  <PreviewFallback label={`${selectedPreviewFile.extension.toUpperCase()} preview not yet supported`} />
+                </div>
               ) : (
                 <div className="detail-image"><PreviewFallback label="3D preview unavailable" /></div>
               )}
@@ -728,12 +835,16 @@ export default function App() {
                       <strong>{file.name}</strong>
                       <span>{formatBytes(file.size)} · {new Date(file.lastModified).toLocaleDateString()}</span>
                     </div>
+
                     {duplicateFileIds.has(file.id) && (
-                      <span className="duplicate-file-badge">DUP ×{possibleDuplicates.get(duplicateSignature(file))?.length ?? 2}</span>
+                      <span className="duplicate-file-badge">
+                        DUP ×{possibleDuplicates.get(duplicateSignature(file))?.length ?? 2}
+                      </span>
                     )}
                   </button>
                 ))}
               </div>
+
               {desktopMode && selectedPreviewFile?.nativePath && (
                 <button type="button" className="reveal-selected-file" onClick={() => void revealSelectedFile()}>
                   Reveal selected file in Explorer
@@ -746,10 +857,14 @@ export default function App() {
                 <div className="duplicate-locations-heading">
                   <div>
                     <div className="eyebrow">POSSIBLE DUPLICATE</div>
-                    <h3>{selectedDuplicateOthers.length} other matching location{selectedDuplicateOthers.length === 1 ? '' : 's'}</h3>
+                    <h3>
+                      {selectedDuplicateOthers.length} other matching location
+                      {selectedDuplicateOthers.length === 1 ? '' : 's'}
+                    </h3>
                   </div>
                   <span>name + exact size</span>
                 </div>
+
                 <div className="duplicate-location-list">
                   {selectedDuplicateOthers.map((match) => (
                     <div className="duplicate-location-row" key={match.id}>
@@ -759,6 +874,7 @@ export default function App() {
                     </div>
                   ))}
                 </div>
+
                 <p>These are possible duplicates only. Content hashing can be added later for exact verification.</p>
               </section>
             )}
@@ -779,29 +895,45 @@ export default function App() {
             }}
           >
             <section className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-modelarium-title">
-              <button type="button" className="about-modal-close" onClick={() => setIsAboutOpen(false)} aria-label="Close About">×</button>
+              <button
+                type="button"
+                className="about-modal-close"
+                onClick={() => setIsAboutOpen(false)}
+                aria-label="Close About"
+              >
+                ×
+              </button>
+
               <div className="eyebrow">MODELARIUM 3D MODEL LIBRARY</div>
               <h2 id="about-modelarium-title">Your 3D models, finally easy to rediscover.</h2>
               <p className="about-lead">
-                Modelarium turns an existing collection of STL, 3MF, ZIP and image files into a visual catalogue while preserving the folder structure you already use.
+                Modelarium turns an existing collection of STL, 3MF, ZIP and image files into a visual catalogue while
+                preserving the folder structure you already use.
               </p>
 
               <div className="about-grid">
                 <section>
                   <h3>Local-first by design</h3>
-                  <p>Source files are read only by the catalogue. Modelarium does not rename, move, delete, overwrite, extract or upload your model files.</p>
+                  <p>
+                    Source files are read only by the catalogue. Modelarium does not rename, move, delete, overwrite,
+                    extract or upload your model files.
+                  </p>
                 </section>
+
                 <section>
                   <h3>Local React edition</h3>
                   <p>
-                    A downloadable local React edition is available. For access or more information, contact
-                    {' '}<a href="mailto:bruce@sutherand.co.za">bruce@sutherand.co.za</a>.
+                    A downloadable local React edition is available. For access or more information, contact{' '}
+                    <a href="mailto:bruce@sutherand.co.za">bruce@sutherand.co.za</a>.
                   </p>
                 </section>
+
                 <section className="about-wide">
                   <h3>Coming later — Print Analysis</h3>
                   <p>
-                    The planned Print Analysis feature will compare Fast, Strength Optimised, Quality Optimised and Balanced print strategies using real slicer-derived time and material estimates. An optional AI layer may later explain the trade-offs and recommend a strategy without inventing the underlying figures.
+                    The planned Print Analysis feature will compare Fast, Strength Optimised, Quality Optimised and
+                    Balanced print strategies using real slicer-derived time and material estimates. An optional AI layer
+                    may later explain the trade-offs and recommend a strategy without inventing the underlying figures.
                   </p>
                 </section>
               </div>
@@ -817,6 +949,7 @@ export default function App() {
                 >
                   Show introduction
                 </button>
+
                 <div className="about-footer-meta">
                   <span>v{APP_VERSION} · {runtimeLabel}</span>
                   <a href="https://modelarium.co.za" target="_blank" rel="noreferrer">modelarium.co.za</a>
@@ -825,6 +958,7 @@ export default function App() {
             </section>
           </div>
         )}
+
         {isPreviewExpanded && selected && selectedPreviewFile && canExpandPreview && (
           <div
             className="preview-modal-backdrop"
@@ -845,6 +979,7 @@ export default function App() {
                   <h2>{selected.name}</h2>
                   <p>{selectedPreviewFile.name} · v{APP_VERSION} · {runtimeLabel}</p>
                 </div>
+
                 <button
                   type="button"
                   className="preview-modal-close"
