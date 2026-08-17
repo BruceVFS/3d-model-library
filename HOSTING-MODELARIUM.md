@@ -52,6 +52,8 @@ Use current Chrome or Edge and open:
 
 `https://www.faceless.co.za/modelarium/`
 
+Firefox does not currently support Modelarium's direct library access because the required directory picker API is unavailable. Use Modelarium Desktop, Chrome or Edge instead.
+
 Verify:
 
 1. Header identifies **Modelarium · 3D Model Library · v0.1.1 · Hosted Web**.
