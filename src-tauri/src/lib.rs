@@ -284,7 +284,6 @@ async fn reveal_library_file(path: String, app: AppHandle) -> Result<(), String>
         .map_err(|error| format!("Unable to reveal source file: {error}"))
 }
 
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PrintAnalysisRequest {
@@ -295,6 +294,7 @@ struct PrintAnalysisRequest {
     spool_weight_g: f64,
     spool_cost: f64,
     currency: String,
+    strategy: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -309,6 +309,73 @@ struct PrintAnalysisResult {
     material_cost: Option<f64>,
     currency: String,
     warnings: Vec<String>,
+    strategy: String,
+    layer_height_mm: Option<f64>,
+    perimeter_count: Option<u32>,
+    infill_percent: Option<u32>,
+}
+
+#[derive(Clone, Copy)]
+struct PrintStrategySpec {
+    id: &'static str,
+    layer_height_mm: Option<f64>,
+    perimeter_count: Option<u32>,
+    infill_percent: Option<u32>,
+}
+
+fn print_strategy_spec(strategy: Option<&str>) -> Result<PrintStrategySpec, String> {
+    match strategy
+        .unwrap_or("baseline")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "baseline" => Ok(PrintStrategySpec {
+            id: "baseline",
+            layer_height_mm: None,
+            perimeter_count: None,
+            infill_percent: None,
+        }),
+        "fast" => Ok(PrintStrategySpec {
+            id: "fast",
+            layer_height_mm: Some(0.28),
+            perimeter_count: Some(2),
+            infill_percent: Some(10),
+        }),
+        "balanced" => Ok(PrintStrategySpec {
+            id: "balanced",
+            layer_height_mm: Some(0.20),
+            perimeter_count: Some(3),
+            infill_percent: Some(15),
+        }),
+        "strength" => Ok(PrintStrategySpec {
+            id: "strength",
+            layer_height_mm: Some(0.20),
+            perimeter_count: Some(5),
+            infill_percent: Some(30),
+        }),
+        "quality" => Ok(PrintStrategySpec {
+            id: "quality",
+            layer_height_mm: Some(0.12),
+            perimeter_count: Some(3),
+            infill_percent: Some(15),
+        }),
+        other => Err(format!("Unknown Print Analysis strategy: {other}")),
+    }
+}
+
+fn apply_strategy_overrides(command: &mut Command, strategy: PrintStrategySpec) {
+    if let Some(layer_height) = strategy.layer_height_mm {
+        command
+            .arg("--layer-height")
+            .arg(format!("{layer_height:.2}"));
+    }
+    if let Some(perimeters) = strategy.perimeter_count {
+        command.arg("--perimeters").arg(perimeters.to_string());
+    }
+    if let Some(infill) = strategy.infill_percent {
+        command.arg("--fill-density").arg(format!("{infill}%"));
+    }
 }
 
 #[derive(Default)]
@@ -371,7 +438,10 @@ fn parse_gcode_metrics(path: &Path) -> Result<ParsedGcodeMetrics, String> {
 
 fn looks_like_progress_line(line: &str) -> bool {
     let trimmed = line.trim_start();
-    let digit_count = trimmed.chars().take_while(|character| character.is_ascii_digit()).count();
+    let digit_count = trimmed
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .count();
     digit_count > 0 && trimmed[digit_count..].trim_start().starts_with("=>")
 }
 
@@ -383,7 +453,10 @@ fn extract_slicer_warnings(output: &str) -> Vec<String> {
         let line = raw_line.trim();
         if line.to_ascii_lowercase().starts_with("print warning:") {
             capturing = true;
-            let message = line.split_once(':').map(|(_, value)| value.trim()).unwrap_or("");
+            let message = line
+                .split_once(':')
+                .map(|(_, value)| value.trim())
+                .unwrap_or("");
             if !message.is_empty() {
                 warnings.push(message.to_string());
             }
@@ -430,8 +503,12 @@ fn canonical_external_file(requested: &str, label: &str) -> Result<PathBuf, Stri
     Ok(path)
 }
 
-fn run_print_analysis(request: PrintAnalysisRequest, app: &AppHandle) -> Result<PrintAnalysisResult, String> {
-    if !request.material_density_g_per_cm3.is_finite() || request.material_density_g_per_cm3 <= 0.0 {
+fn run_print_analysis(
+    request: PrintAnalysisRequest,
+    app: &AppHandle,
+) -> Result<PrintAnalysisResult, String> {
+    if !request.material_density_g_per_cm3.is_finite() || request.material_density_g_per_cm3 <= 0.0
+    {
         return Err("Material density must be greater than zero.".to_string());
     }
     if !request.spool_weight_g.is_finite() || request.spool_weight_g <= 0.0 {
@@ -453,7 +530,10 @@ fn run_print_analysis(request: PrintAnalysisRequest, app: &AppHandle) -> Result<
     }
 
     let slicer = canonical_external_file(&request.slicer_path, "PrusaSlicer executable")?;
-    let slicer_name = slicer.file_name().and_then(|value| value.to_str()).unwrap_or("");
+    let slicer_name = slicer
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
     if !slicer_name.eq_ignore_ascii_case("prusa-slicer-console.exe") {
         return Err("For this proof of concept, select prusa-slicer-console.exe.".to_string());
     }
@@ -468,18 +548,21 @@ fn run_print_analysis(request: PrintAnalysisRequest, app: &AppHandle) -> Result<
         return Err("The baseline PrusaSlicer configuration must be an .ini file.".to_string());
     }
 
+    let strategy = print_strategy_spec(request.strategy.as_deref())?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or(0);
     let temp_gcode = std::env::temp_dir().join(format!(
-        "modelarium-analysis-{}-{timestamp}.gcode",
-        std::process::id()
+        "modelarium-analysis-{}-{}-{timestamp}.gcode",
+        std::process::id(),
+        strategy.id
     ));
 
-    let output = Command::new(&slicer)
-        .arg("--load")
-        .arg(&config)
+    let mut command = Command::new(&slicer);
+    command.arg("--load").arg(&config);
+    apply_strategy_overrides(&mut command, strategy);
+    let output = command
         .arg("--export-gcode")
         .arg("--output")
         .arg(&temp_gcode)
@@ -504,7 +587,10 @@ fn run_print_analysis(request: PrintAnalysisRequest, app: &AppHandle) -> Result<
         return Err(format!("PrusaSlicer analysis failed: {detail}"));
     }
     if !temp_gcode.is_file() {
-        return Err("PrusaSlicer completed without producing the expected temporary G-code file.".to_string());
+        return Err(
+            "PrusaSlicer completed without producing the expected temporary G-code file."
+                .to_string(),
+        );
     }
 
     let metrics = parse_gcode_metrics(&temp_gcode);
@@ -519,10 +605,11 @@ fn run_print_analysis(request: PrintAnalysisRequest, app: &AppHandle) -> Result<
     let filament_weight_g = metrics
         .filament_volume_cm3
         .map(|volume| volume * request.material_density_g_per_cm3);
-    let material_cost = filament_weight_g
-        .map(|weight| (weight / request.spool_weight_g) * request.spool_cost);
+    let material_cost =
+        filament_weight_g.map(|weight| (weight / request.spool_weight_g) * request.spool_cost);
 
     Ok(PrintAnalysisResult {
+        strategy: strategy.id.to_string(),
         slicer_name: "PrusaSlicer".to_string(),
         slicer_version: prusaslicer_version(&slicer),
         estimated_seconds,
@@ -536,6 +623,9 @@ fn run_print_analysis(request: PrintAnalysisRequest, app: &AppHandle) -> Result<
             request.currency.trim().to_string()
         },
         warnings,
+        layer_height_mm: strategy.layer_height_mm,
+        perimeter_count: strategy.perimeter_count,
+        infill_percent: strategy.infill_percent,
     })
 }
 
@@ -547,7 +637,10 @@ async fn detect_prusaslicer() -> Result<Option<String>, String> {
     }
 
     #[cfg(target_os = "windows")]
-    if let Ok(output) = Command::new("where.exe").arg("prusa-slicer-console.exe").output() {
+    if let Ok(output) = Command::new("where.exe")
+        .arg("prusa-slicer-console.exe")
+        .output()
+    {
         if output.status.success() {
             if let Some(first) = String::from_utf8_lossy(&output.stdout)
                 .lines()
@@ -599,7 +692,10 @@ async fn choose_prusaslicer_config(app: AppHandle) -> Result<Option<String>, Str
 }
 
 #[tauri::command]
-async fn analyse_print(request: PrintAnalysisRequest, app: AppHandle) -> Result<PrintAnalysisResult, String> {
+async fn analyse_print(
+    request: PrintAnalysisRequest,
+    app: AppHandle,
+) -> Result<PrintAnalysisResult, String> {
     tauri::async_runtime::spawn_blocking(move || run_print_analysis(request, &app))
         .await
         .map_err(|error| format!("Print Analysis task failed: {error}"))?
@@ -607,7 +703,7 @@ async fn analyse_print(request: PrintAnalysisRequest, app: AppHandle) -> Result<
 
 #[cfg(test)]
 mod print_analysis_tests {
-    use super::{extract_slicer_warnings, parse_duration_seconds};
+    use super::{extract_slicer_warnings, parse_duration_seconds, print_strategy_spec};
 
     #[test]
     fn parses_prusaslicer_duration() {
@@ -616,11 +712,37 @@ mod print_analysis_tests {
     }
 
     #[test]
+    fn defines_four_strategy_overlays() {
+        let fast = print_strategy_spec(Some("fast")).expect("fast strategy");
+        assert_eq!(fast.layer_height_mm, Some(0.28));
+        assert_eq!(fast.perimeter_count, Some(2));
+        assert_eq!(fast.infill_percent, Some(10));
+
+        let balanced = print_strategy_spec(Some("balanced")).expect("balanced strategy");
+        assert_eq!(balanced.layer_height_mm, Some(0.20));
+        assert_eq!(balanced.perimeter_count, Some(3));
+        assert_eq!(balanced.infill_percent, Some(15));
+
+        let strength = print_strategy_spec(Some("strength")).expect("strength strategy");
+        assert_eq!(strength.perimeter_count, Some(5));
+        assert_eq!(strength.infill_percent, Some(30));
+
+        let quality = print_strategy_spec(Some("quality")).expect("quality strategy");
+        assert_eq!(quality.layer_height_mm, Some(0.12));
+
+        assert!(print_strategy_spec(Some("unknown")).is_err());
+    }
+
+    #[test]
     fn captures_warning_block() {
         let sample = "69 => Alert if supports needed\nprint warning: Detected print stability issues:\n\nWedgeScraper.stl\nLow bed adhesion\n\nConsider enabling brim.\n89 => Calculating overhanging perimeters";
         let warnings = extract_slicer_warnings(sample);
-        assert!(warnings.iter().any(|line| line.contains("Low bed adhesion")));
-        assert!(warnings.iter().any(|line| line.contains("Consider enabling brim")));
+        assert!(warnings
+            .iter()
+            .any(|line| line.contains("Low bed adhesion")));
+        assert!(warnings
+            .iter()
+            .any(|line| line.contains("Consider enabling brim")));
     }
 }
 

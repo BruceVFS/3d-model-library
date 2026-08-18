@@ -32,3 +32,16 @@ Development may rely on an installed PrusaSlicer. A consumer Windows installer s
 ## UI workflow
 
 Print Analysis is a first-class model action. It opens in a dedicated modal from the preview toolbar rather than living below long associated-file lists. The normal and expanded previews both expose Print Analysis; the Print Analysis modal exposes Expand model. Moving between the two preserves the selected STL and the latest analysis result for the current session. Web editions show Print Analysis as a visible disabled action so users can discover that the capability is available in Modelarium Windows Desktop.
+
+## Four-strategy comparison
+
+Modelarium can run four sequential PrusaSlicer analyses derived from the selected known-good baseline `.ini`.
+
+| Strategy | Layer height | Perimeters | Infill |
+|---|---:|---:|---:|
+| Fast | 0.28 mm | 2 | 10% |
+| Balanced | 0.20 mm | 3 | 15% |
+| Strength Optimised | 0.20 mm | 5 | 30% |
+| Quality Optimised | 0.12 mm | 3 | 15% |
+
+These are starter comparison heuristics, not guarantees of strength, finish, speed or suitability. PrusaSlicer remains the source of truth for estimated time, filament metrics and slicer warnings. Strategy runs are sequential to avoid launching four slicer processes at once.

@@ -5,13 +5,18 @@ import {
   chooseDesktopPrusaSlicerConfig,
   chooseDesktopPrusaSlicerExecutable,
   detectDesktopPrusaSlicer,
+  type ComparisonPrintStrategy,
   type PrintAnalysisResult,
+  type PrintStrategy,
+  type PrintStrategyResults,
 } from '../lib/platform'
 
 type PrintAnalysisPanelProps = {
   file?: LibraryFile
   result?: PrintAnalysisResult
   onResultChange?: (result?: PrintAnalysisResult) => void
+  comparisonResults?: PrintStrategyResults
+  onComparisonResultsChange?: (results: PrintStrategyResults) => void
 }
 
 type PrintAnalysisSettings = {
@@ -23,6 +28,12 @@ type PrintAnalysisSettings = {
   currency: string
 }
 
+type StrategyDefinition = {
+  id: ComparisonPrintStrategy
+  label: string
+  shortDescription: string
+}
+
 const STORAGE_KEY = 'modelarium-print-analysis-poc'
 
 const DEFAULT_SETTINGS: PrintAnalysisSettings = {
@@ -32,6 +43,21 @@ const DEFAULT_SETTINGS: PrintAnalysisSettings = {
   spoolWeightG: '1000',
   spoolCost: '300',
   currency: 'R',
+}
+
+const STRATEGIES: StrategyDefinition[] = [
+  { id: 'fast', label: 'Fast', shortDescription: 'Prioritises shorter print time.' },
+  { id: 'balanced', label: 'Balanced', shortDescription: 'Everyday compromise across time, material and finish.' },
+  { id: 'strength', label: 'Strength Optimised', shortDescription: 'Adds wall and infill emphasis for functional parts.' },
+  { id: 'quality', label: 'Quality Optimised', shortDescription: 'Uses finer layers for surface detail.' },
+]
+
+const STRATEGY_LABELS: Record<PrintStrategy, string> = {
+  baseline: 'Baseline',
+  fast: 'Fast',
+  balanced: 'Balanced',
+  strength: 'Strength Optimised',
+  quality: 'Quality Optimised',
 }
 
 function readSettings(): PrintAnalysisSettings {
@@ -51,7 +77,6 @@ export function formatDuration(totalSeconds: number) {
   const hours = Math.floor((seconds % 86400) / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const remainingSeconds = seconds % 60
-
   const parts: string[] = []
   if (days) parts.push(`${days}d`)
   if (hours) parts.push(`${hours}h`)
@@ -70,35 +95,73 @@ function shortPath(value: string) {
   return `…${value.slice(-57)}`
 }
 
+function formatWeight(result?: PrintAnalysisResult) {
+  return result?.filamentWeightG != null ? `${result.filamentWeightG.toFixed(1)} g` : '—'
+}
+
+function formatCost(result?: PrintAnalysisResult) {
+  return result?.materialCost != null ? `${result.currency}${result.materialCost.toFixed(2)}` : '—'
+}
+
+function formatLayer(result?: PrintAnalysisResult) {
+  return result?.layerHeightMm != null ? `${result.layerHeightMm.toFixed(2)} mm` : 'Baseline'
+}
+
+function formatWalls(result?: PrintAnalysisResult) {
+  return result?.perimeterCount != null ? String(result.perimeterCount) : 'Baseline'
+}
+
+function formatInfill(result?: PrintAnalysisResult) {
+  return result?.infillPercent != null ? `${result.infillPercent}%` : 'Baseline'
+}
+
 export function formatPrintAnalysisSummary(result: PrintAnalysisResult) {
   const parts = [formatDuration(result.estimatedSeconds)]
   if (result.filamentWeightG != null) parts.push(`${result.filamentWeightG.toFixed(1)} g`)
   if (result.materialCost != null) parts.push(`${result.currency}${result.materialCost.toFixed(2)}`)
-  return parts.join(' · ')
+  const prefix = result.strategy !== 'baseline' ? `${STRATEGY_LABELS[result.strategy]} · ` : ''
+  return `${prefix}${parts.join(' · ')}`
 }
 
-export function PrintAnalysisPanel({ file, result: controlledResult, onResultChange }: PrintAnalysisPanelProps) {
+export function PrintAnalysisPanel({
+  file,
+  result: controlledResult,
+  onResultChange,
+  comparisonResults: controlledComparisonResults,
+  onComparisonResultsChange,
+}: PrintAnalysisPanelProps) {
   const [settings, setSettings] = useState<PrintAnalysisSettings>(() => readSettings())
   const [localResult, setLocalResult] = useState<PrintAnalysisResult>()
+  const [localComparisonResults, setLocalComparisonResults] = useState<PrintStrategyResults>({})
   const result = onResultChange ? controlledResult : localResult
+  const comparisonResults = onComparisonResultsChange ? (controlledComparisonResults ?? {}) : localComparisonResults
+
   const setResult = (next?: PrintAnalysisResult) => {
     if (onResultChange) onResultChange(next)
     else setLocalResult(next)
   }
+
+  const setComparisonResults = (next: PrintStrategyResults) => {
+    if (onComparisonResultsChange) onComparisonResultsChange(next)
+    else setLocalComparisonResults(next)
+  }
+
   const [error, setError] = useState<string>()
-  const [isAnalysing, setIsAnalysing] = useState(false)
+  const [isAnalysingBaseline, setIsAnalysingBaseline] = useState(false)
+  const [comparisonProgress, setComparisonProgress] = useState<{ strategy: ComparisonPrintStrategy; index: number }>()
   const [isDetecting, setIsDetecting] = useState(false)
 
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
     } catch {
-      // Persistence is optional; the settings still work for this session.
+      // Persistence is optional; settings still work for this session.
     }
   }, [settings])
 
   useEffect(() => {
     setError(undefined)
+    setComparisonProgress(undefined)
   }, [file?.id])
 
   useEffect(() => {
@@ -114,6 +177,7 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
       .finally(() => {
         if (!cancelled) setIsDetecting(false)
       })
+
     return () => {
       cancelled = true
     }
@@ -122,6 +186,7 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
   const setField = (field: keyof PrintAnalysisSettings, value: string) => {
     setSettings((current) => ({ ...current, [field]: value }))
     setResult(undefined)
+    setComparisonResults({})
     setError(undefined)
   }
 
@@ -161,42 +226,77 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
       spoolWeight &&
       spoolCost,
   )
+  const isComparing = Boolean(comparisonProgress)
+  const isBusy = isAnalysingBaseline || isComparing
 
-  const analyse = async () => {
-    if (!file?.nativePath || !density || !spoolWeight || !spoolCost) return
-    setIsAnalysing(true)
+  const analyseStrategy = async (strategy: PrintStrategy) => {
+    if (!file?.nativePath || !density || !spoolWeight || !spoolCost) {
+      throw new Error('Print Analysis settings are incomplete.')
+    }
+
+    return analyseDesktopPrint({
+      modelPath: file.nativePath,
+      slicerPath: settings.slicerPath.trim(),
+      configPath: settings.profilePath.trim(),
+      materialDensityGPerCm3: density,
+      spoolWeightG: spoolWeight,
+      spoolCost,
+      currency: settings.currency.trim() || 'R',
+      strategy,
+    })
+  }
+
+  const analyseBaseline = async () => {
+    setIsAnalysingBaseline(true)
     setError(undefined)
-    setResult(undefined)
     try {
-      const analysis = await analyseDesktopPrint({
-        modelPath: file.nativePath,
-        slicerPath: settings.slicerPath.trim(),
-        configPath: settings.profilePath.trim(),
-        materialDensityGPerCm3: density,
-        spoolWeightG: spoolWeight,
-        spoolCost,
-        currency: settings.currency.trim() || 'R',
-      })
+      const analysis = await analyseStrategy('baseline')
       setResult(analysis)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Print analysis failed.')
+      setError(cause instanceof Error ? cause.message : 'Baseline print analysis failed.')
     } finally {
-      setIsAnalysing(false)
+      setIsAnalysingBaseline(false)
     }
   }
+
+  const compareStrategies = async () => {
+    setError(undefined)
+    setComparisonResults({})
+    const completed: PrintStrategyResults = {}
+    let activeStrategy: ComparisonPrintStrategy | undefined
+
+    try {
+      for (let index = 0; index < STRATEGIES.length; index += 1) {
+        const definition = STRATEGIES[index]
+        activeStrategy = definition.id
+        setComparisonProgress({ strategy: definition.id, index })
+        const analysis = await analyseStrategy(definition.id)
+        completed[definition.id] = analysis
+        setComparisonResults({ ...completed })
+      }
+    } catch (cause) {
+      const label = activeStrategy ? STRATEGY_LABELS[activeStrategy] : 'strategy'
+      setError(cause instanceof Error ? `Comparison stopped during ${label}: ${cause.message}` : 'Strategy comparison failed.')
+    } finally {
+      setComparisonProgress(undefined)
+    }
+  }
+
+  const hasComparison = STRATEGIES.some((definition) => comparisonResults[definition.id])
+  const balanced = comparisonResults.balanced
 
   return (
     <section className="print-analysis-panel" aria-label="Print Analysis">
       <div className="print-analysis-heading">
         <div>
           <div className="eyebrow">PRINT ANALYSIS</div>
-          <h3>Baseline slicer analysis</h3>
+          <h3>Baseline + four-strategy comparison</h3>
         </div>
         <span className="desktop-only-badge">WINDOWS DESKTOP</span>
       </div>
 
       {file?.extension !== 'stl' || !file.nativePath ? (
-        <p className="print-analysis-empty">Select an STL file to run a baseline print analysis.</p>
+        <p className="print-analysis-empty">Select an STL file to run Print Analysis.</p>
       ) : (
         <>
           <div className="print-analysis-model">
@@ -215,7 +315,7 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
                   placeholder="C:\\Program Files\\Prusa3D\\PrusaSlicer\\prusa-slicer-console.exe"
                   title={settings.slicerPath}
                 />
-                <button type="button" onClick={() => void chooseSlicer()}>Browse</button>
+                <button type="button" onClick={() => void chooseSlicer()} disabled={isBusy}>Browse</button>
               </div>
               <small>{isDetecting ? 'Detecting PrusaSlicer…' : settings.slicerPath ? shortPath(settings.slicerPath) : 'Not configured'}</small>
             </label>
@@ -230,7 +330,7 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
                   placeholder="Choose an exported PrusaSlicer configuration"
                   title={settings.profilePath}
                 />
-                <button type="button" onClick={() => void chooseProfile()}>Browse</button>
+                <button type="button" onClick={() => void chooseProfile()} disabled={isBusy}>Browse</button>
               </div>
               <small>{settings.profilePath ? shortPath(settings.profilePath) : 'Export a known-good printer/material/print configuration from PrusaSlicer.'}</small>
             </label>
@@ -245,6 +345,7 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
                 step="0.01"
                 value={settings.materialDensityGPerCm3}
                 onChange={(event) => setField('materialDensityGPerCm3', event.currentTarget.value)}
+                disabled={isBusy}
               />
             </label>
             <label>
@@ -255,6 +356,7 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
                 step="1"
                 value={settings.spoolWeightG}
                 onChange={(event) => setField('spoolWeightG', event.currentTarget.value)}
+                disabled={isBusy}
               />
             </label>
             <label>
@@ -265,6 +367,7 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
                 step="0.01"
                 value={settings.spoolCost}
                 onChange={(event) => setField('spoolCost', event.currentTarget.value)}
+                disabled={isBusy}
               />
             </label>
             <label>
@@ -274,24 +377,103 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
                 maxLength={6}
                 value={settings.currency}
                 onChange={(event) => setField('currency', event.currentTarget.value)}
+                disabled={isBusy}
               />
             </label>
           </div>
 
           <div className="print-analysis-actions">
-            <button type="button" className="analysis-detect-button" onClick={() => void detectSlicer()} disabled={isDetecting}>
+            <button type="button" className="analysis-detect-button" onClick={() => void detectSlicer()} disabled={isDetecting || isBusy}>
               {isDetecting ? 'Detecting…' : 'Detect slicer'}
             </button>
-            <button type="button" className="analysis-run-button" onClick={() => void analyse()} disabled={!canAnalyse || isAnalysing}>
-              {isAnalysing ? 'Analysing…' : 'Analyse this STL'}
-            </button>
+            <div className="analysis-run-group">
+              <button type="button" className="analysis-baseline-button" onClick={() => void analyseBaseline()} disabled={!canAnalyse || isBusy}>
+                {isAnalysingBaseline ? 'Analysing baseline…' : 'Analyse baseline'}
+              </button>
+              <button type="button" className="analysis-run-button" onClick={() => void compareStrategies()} disabled={!canAnalyse || isBusy}>
+                {isComparing && comparisonProgress
+                  ? `Running ${STRATEGY_LABELS[comparisonProgress.strategy]} (${comparisonProgress.index + 1}/4)…`
+                  : 'Compare 4 strategies'}
+              </button>
+            </div>
           </div>
 
           <p className="print-analysis-note">
-            Modelarium reads the source STL and profile, writes temporary G-code outside the library, parses the slicer metrics and removes the temporary file afterwards.
+            Each strategy starts from your known-good PrusaSlicer profile. Modelarium applies only documented overrides, writes temporary G-code outside the library, parses real slicer metrics and removes the temporary files afterwards.
           </p>
 
           {error && <div className="print-analysis-error" role="alert">{error}</div>}
+
+          {(hasComparison || isComparing) && (
+            <section className="strategy-comparison" aria-label="Four-strategy Print Analysis comparison">
+              <div className="strategy-comparison-heading">
+                <div>
+                  <div className="eyebrow">4-STRATEGY COMPARISON</div>
+                  <h4>Real PrusaSlicer results</h4>
+                </div>
+                {balanced && <span className="balanced-badge">BALANCED REFERENCE</span>}
+              </div>
+
+              <div className="strategy-table-wrap">
+                <table className="strategy-table">
+                  <thead>
+                    <tr>
+                      <th>Strategy</th>
+                      <th>Time</th>
+                      <th>Filament</th>
+                      <th>Cost</th>
+                      <th>Layer</th>
+                      <th>Walls</th>
+                      <th>Infill</th>
+                      <th>Warnings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {STRATEGIES.map((definition) => {
+                      const strategyResult = comparisonResults[definition.id]
+                      const isCurrent = comparisonProgress?.strategy === definition.id
+                      return (
+                        <tr key={definition.id} className={definition.id === 'balanced' ? 'strategy-balanced-row' : undefined}>
+                          <td>
+                            <strong>{definition.label}</strong>
+                            <small>{definition.shortDescription}</small>
+                          </td>
+                          <td>{strategyResult ? formatDuration(strategyResult.estimatedSeconds) : isCurrent ? 'Running…' : '—'}</td>
+                          <td>{formatWeight(strategyResult)}</td>
+                          <td>{formatCost(strategyResult)}</td>
+                          <td>{formatLayer(strategyResult)}</td>
+                          <td>{formatWalls(strategyResult)}</td>
+                          <td>{formatInfill(strategyResult)}</td>
+                          <td>{strategyResult ? strategyResult.warnings.length : '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="strategy-disclaimer">
+                Starter overlays: Fast 0.28 mm / 2 walls / 10% infill · Balanced 0.20 / 3 / 15% · Strength Optimised 0.20 / 5 / 30% · Quality Optimised 0.12 / 3 / 15%. These are comparison heuristics, not guarantees of strength, finish or suitability.
+              </p>
+
+              <div className="strategy-warning-grid">
+                {STRATEGIES.map((definition) => {
+                  const strategyResult = comparisonResults[definition.id]
+                  if (!strategyResult?.warnings.length) return null
+                  return (
+                    <details className="strategy-warning-card" key={definition.id}>
+                      <summary>{definition.label}: {strategyResult.warnings.length} slicer warning{strategyResult.warnings.length === 1 ? '' : 's'}</summary>
+                      <ul>
+                        {strategyResult.warnings.map((warning, index) => (
+                          <li key={`${definition.id}-${warning}-${index}`}>{warning}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )
+                })}
+              </div>
+            </section>
+          )}
 
           {result && (
             <div className="analysis-result">
@@ -300,14 +482,14 @@ export function PrintAnalysisPanel({ file, result: controlledResult, onResultCha
                   <div className="eyebrow">BASELINE RESULT</div>
                   <strong>{result.slicerName}{result.slicerVersion ? ` ${result.slicerVersion}` : ''}</strong>
                 </div>
-                <span>real slicer output</span>
+                <span>original profile · no strategy overrides</span>
               </div>
               <div className="analysis-metrics">
                 <div><span>Estimated time</span><strong>{formatDuration(result.estimatedSeconds)}</strong></div>
                 <div><span>Filament length</span><strong>{result.filamentLengthMm != null ? `${(result.filamentLengthMm / 1000).toFixed(2)} m` : '—'}</strong></div>
                 <div><span>Filament volume</span><strong>{result.filamentVolumeCm3 != null ? `${result.filamentVolumeCm3.toFixed(2)} cm³` : '—'}</strong></div>
-                <div><span>Estimated filament</span><strong>{result.filamentWeightG != null ? `${result.filamentWeightG.toFixed(1)} g` : '—'}</strong></div>
-                <div className="analysis-cost"><span>Estimated material cost</span><strong>{result.materialCost != null ? `${result.currency}${result.materialCost.toFixed(2)}` : '—'}</strong></div>
+                <div><span>Estimated filament</span><strong>{formatWeight(result)}</strong></div>
+                <div className="analysis-cost"><span>Estimated material cost</span><strong>{formatCost(result)}</strong></div>
               </div>
               {result.warnings.length > 0 && (
                 <div className="analysis-warnings">

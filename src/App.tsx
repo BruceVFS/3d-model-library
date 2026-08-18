@@ -20,6 +20,7 @@ import {
   openDesktopContainingFolder,
   revealDesktopFile,
   type PrintAnalysisResult,
+  type PrintStrategyResults,
 } from './lib/platform'
 
 const APP_VERSION = packageJson.version
@@ -106,6 +107,7 @@ export default function App() {
   const [returnToPreviewAfterAnalysis, setReturnToPreviewAfterAnalysis] = useState(false)
   const [returnToAnalysisAfterPreview, setReturnToAnalysisAfterPreview] = useState(false)
   const [analysisResults, setAnalysisResults] = useState<Record<string, PrintAnalysisResult>>({})
+  const [strategyResults, setStrategyResults] = useState<Record<string, PrintStrategyResults>>({})
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
   const [showIntro, setShowIntro] = useState(true)
   const [isAboutOpen, setIsAboutOpen] = useState(false)
@@ -257,6 +259,8 @@ export default function App() {
   )
   const canAnalyseSelected = Boolean(selectedPreviewFile?.extension === 'stl' && selectedPreviewFile.nativePath)
   const selectedAnalysisResult = selectedPreviewFile ? analysisResults[selectedPreviewFile.id] : undefined
+  const selectedStrategyResults: PrintStrategyResults = selectedPreviewFile ? (strategyResults[selectedPreviewFile.id] ?? {}) : {}
+  const selectedSummaryResult = selectedStrategyResults.balanced ?? selectedAnalysisResult
   const printAnalysisActionTitle = !desktopMode
     ? 'Print Analysis requires the Windows Desktop edition.'
     : !canAnalyseSelected
@@ -305,6 +309,10 @@ export default function App() {
       else delete next[selectedPreviewFile.id]
       return next
     })
+  }
+  const updateSelectedStrategyResults = (results: PrintStrategyResults) => {
+    if (!selectedPreviewFile) return
+    setStrategyResults((current) => ({ ...current, [selectedPreviewFile.id]: results }))
   }
 
   useEffect(() => {
@@ -888,14 +896,14 @@ export default function App() {
                   </button>
                 )}
               </div>
-              {selectedAnalysisResult && desktopMode && canAnalyseSelected && (
+              {selectedSummaryResult && desktopMode && canAnalyseSelected && (
                 <button
                   type="button"
                   className="analysis-summary-pill"
                   onClick={() => openPrintAnalysis(false)}
                   title="Open the latest Print Analysis result"
                 >
-                  {formatPrintAnalysisSummary(selectedAnalysisResult)}
+                  {formatPrintAnalysisSummary(selectedSummaryResult)}
                 </button>
               )}
             </div>
@@ -1099,6 +1107,8 @@ export default function App() {
                   file={selectedPreviewFile}
                   result={selectedAnalysisResult}
                   onResultChange={updateSelectedAnalysisResult}
+                  comparisonResults={selectedStrategyResults}
+                  onComparisonResultsChange={updateSelectedStrategyResults}
                 />
               </div>
             </section>

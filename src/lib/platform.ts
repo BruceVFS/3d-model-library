@@ -42,6 +42,8 @@ export async function revealDesktopFile(file: LibraryFile): Promise<void> {
   await invoke('reveal_library_file', { path: file.nativePath })
 }
 
+export type PrintStrategy = 'baseline' | 'fast' | 'balanced' | 'strength' | 'quality'
+export type ComparisonPrintStrategy = Exclude<PrintStrategy, 'baseline'>
 
 export type PrintAnalysisRequest = {
   modelPath: string
@@ -51,9 +53,11 @@ export type PrintAnalysisRequest = {
   spoolWeightG: number
   spoolCost: number
   currency: string
+  strategy?: PrintStrategy
 }
 
 export type PrintAnalysisResult = {
+  strategy: PrintStrategy
   slicerName: string
   slicerVersion?: string
   estimatedSeconds: number
@@ -63,7 +67,12 @@ export type PrintAnalysisResult = {
   materialCost?: number
   currency: string
   warnings: string[]
+  layerHeightMm?: number
+  perimeterCount?: number
+  infillPercent?: number
 }
+
+export type PrintStrategyResults = Partial<Record<ComparisonPrintStrategy, PrintAnalysisResult>>
 
 export async function detectDesktopPrusaSlicer(): Promise<string | null> {
   return invoke<string | null>('detect_prusaslicer')
