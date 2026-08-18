@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import packageJson from '../package.json'
 import { ImagePreview, PreviewFallback, StlThumbnail, StlViewer } from './components/Preview'
+import { PrintAnalysisPanel, formatPrintAnalysisSummary } from './components/PrintAnalysisPanel'
 import {
   duplicateSignature,
   findPossibleDuplicates,
@@ -18,6 +19,7 @@ import {
   isDesktopApp,
   openDesktopContainingFolder,
   revealDesktopFile,
+  type PrintAnalysisResult,
 } from './lib/platform'
 
 const APP_VERSION = packageJson.version
@@ -100,6 +102,10 @@ export default function App() {
   const [selectedFileId, setSelectedFileId] = useState<string>()
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
+  const [isPrintAnalysisOpen, setIsPrintAnalysisOpen] = useState(false)
+  const [returnToPreviewAfterAnalysis, setReturnToPreviewAfterAnalysis] = useState(false)
+  const [returnToAnalysisAfterPreview, setReturnToAnalysisAfterPreview] = useState(false)
+  const [analysisResults, setAnalysisResults] = useState<Record<string, PrintAnalysisResult>>({})
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
   const [showIntro, setShowIntro] = useState(true)
   const [isAboutOpen, setIsAboutOpen] = useState(false)
@@ -249,6 +255,57 @@ export default function App() {
       (selectedPreviewFile.extension === 'stl' ||
         ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension)),
   )
+  const canAnalyseSelected = Boolean(selectedPreviewFile?.extension === 'stl' && selectedPreviewFile.nativePath)
+  const selectedAnalysisResult = selectedPreviewFile ? analysisResults[selectedPreviewFile.id] : undefined
+  const printAnalysisActionTitle = !desktopMode
+    ? 'Print Analysis requires the Windows Desktop edition.'
+    : !canAnalyseSelected
+      ? 'Select an STL file to use Print Analysis.'
+      : 'Analyse the selected STL with PrusaSlicer.'
+
+  const openExpandedPreview = (returnToAnalysis = false) => {
+    if (!canExpandPreview) return
+    setReturnToPreviewAfterAnalysis(false)
+    setReturnToAnalysisAfterPreview(returnToAnalysis)
+    setIsPrintAnalysisOpen(false)
+    setIsPreviewExpanded(true)
+  }
+  const closeExpandedPreview = () => {
+    setIsPreviewExpanded(false)
+    if (returnToAnalysisAfterPreview) {
+      setReturnToAnalysisAfterPreview(false)
+      setIsPrintAnalysisOpen(true)
+    }
+  }
+  const openPrintAnalysis = (returnToPreview = false) => {
+    if (!desktopMode || !canAnalyseSelected) return
+    setReturnToAnalysisAfterPreview(false)
+    setReturnToPreviewAfterAnalysis(returnToPreview)
+    setIsPreviewExpanded(false)
+    setIsPrintAnalysisOpen(true)
+  }
+  const closePrintAnalysis = () => {
+    setIsPrintAnalysisOpen(false)
+    if (returnToPreviewAfterAnalysis) {
+      setReturnToPreviewAfterAnalysis(false)
+      setIsPreviewExpanded(true)
+    }
+  }
+  const dismissModelModals = () => {
+    setIsPreviewExpanded(false)
+    setIsPrintAnalysisOpen(false)
+    setReturnToPreviewAfterAnalysis(false)
+    setReturnToAnalysisAfterPreview(false)
+  }
+  const updateSelectedAnalysisResult = (result?: PrintAnalysisResult) => {
+    if (!selectedPreviewFile) return
+    setAnalysisResults((current) => {
+      const next = { ...current }
+      if (result) next[selectedPreviewFile.id] = result
+      else delete next[selectedPreviewFile.id]
+      return next
+    })
+  }
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -291,7 +348,7 @@ export default function App() {
     document.body.style.overflow = 'hidden'
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsPreviewExpanded(false)
+      if (event.key === 'Escape') closeExpandedPreview()
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -299,7 +356,23 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
     }
-  }, [isPreviewExpanded])
+  }, [isPreviewExpanded, returnToAnalysisAfterPreview])
+
+  useEffect(() => {
+    if (!isPrintAnalysisOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closePrintAnalysis()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isPrintAnalysisOpen, returnToPreviewAfterAnalysis])
 
   const chooseFolder = async () => {
     if (!supportsDirectoryAccess) {
@@ -791,17 +864,38 @@ export default function App() {
               ) : (
                 <div className="detail-image"><PreviewFallback label="3D preview unavailable" /></div>
               )}
-
-              {canExpandPreview && (
+              <div className="preview-action-toolbar" aria-label="Model actions">
                 <button
                   type="button"
-                  className="preview-expand-button"
-                  onClick={() => setIsPreviewExpanded(true)}
-                  aria-label="Expand preview"
-                  title="Expand preview"
+                  className="model-action-button analysis-action"
+                  onClick={() => openPrintAnalysis(false)}
+                  disabled={!desktopMode || !canAnalyseSelected}
+                  title={printAnalysisActionTitle}
                 >
-                  <span aria-hidden="true">⛶</span>
-                  <span>Expand</span>
+                  <span aria-hidden="true">◫</span>
+                  <span>Print Analysis</span>
+                </button>
+                {canExpandPreview && (
+                  <button
+                    type="button"
+                    className="model-action-button preview-action"
+                    onClick={() => openExpandedPreview(false)}
+                    aria-label="Expand preview"
+                    title="Expand preview"
+                  >
+                    <span aria-hidden="true">⛶</span>
+                    <span>Expand</span>
+                  </button>
+                )}
+              </div>
+              {selectedAnalysisResult && desktopMode && canAnalyseSelected && (
+                <button
+                  type="button"
+                  className="analysis-summary-pill"
+                  onClick={() => openPrintAnalysis(false)}
+                  title="Open the latest Print Analysis result"
+                >
+                  {formatPrintAnalysisSummary(selectedAnalysisResult)}
                 </button>
               )}
             </div>
@@ -929,11 +1023,11 @@ export default function App() {
                 </section>
 
                 <section className="about-wide">
-                  <h3>Coming later — Print Analysis</h3>
+                  <h3>In development — Print Analysis</h3>
                   <p>
-                    The planned Print Analysis feature will compare Fast, Strength Optimised, Quality Optimised and
-                    Balanced print strategies using real slicer-derived time and material estimates. An optional AI layer
-                    may later explain the trade-offs and recommend a strategy without inventing the underlying figures.
+                    Print Analysis is now being developed in the Windows Desktop edition, starting with real PrusaSlicer-derived
+                     time and material metrics. The planned comparison will add Fast, Strength Optimised, Quality Optimised
+                     and Balanced strategies; any optional AI layer will explain trade-offs rather than invent figures.
                   </p>
                 </section>
               </div>
@@ -959,12 +1053,63 @@ export default function App() {
           </div>
         )}
 
+        {isPrintAnalysisOpen && selected && selectedPreviewFile && (
+          <div
+            className="print-analysis-modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closePrintAnalysis()
+            }}
+          >
+            <section
+              className="print-analysis-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Print Analysis for ${selectedPreviewFile.name}`}
+            >
+              <header className="print-analysis-modal-header">
+                <div>
+                  <div className="eyebrow">PRINT ANALYSIS</div>
+                  <h2>{selected.name}</h2>
+                  <p>{selectedPreviewFile.name} · v{APP_VERSION} · {runtimeLabel}</p>
+                </div>
+                <div className="modal-action-toolbar">
+                  <button
+                    type="button"
+                    className="model-action-button preview-action"
+                    onClick={() => openExpandedPreview(true)}
+                    disabled={!canExpandPreview}
+                    title={canExpandPreview ? 'Open the expanded model preview' : 'Expanded preview is unavailable for this file'}
+                  >
+                    <span aria-hidden="true">⛶</span>
+                    <span>Expand model</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="preview-modal-close"
+                    onClick={closePrintAnalysis}
+                    aria-label="Close Print Analysis"
+                  >
+                    ×
+                  </button>
+                </div>
+              </header>
+              <div className="print-analysis-modal-content">
+                <PrintAnalysisPanel
+                  file={selectedPreviewFile}
+                  result={selectedAnalysisResult}
+                  onResultChange={updateSelectedAnalysisResult}
+                />
+              </div>
+            </section>
+          </div>
+        )}
         {isPreviewExpanded && selected && selectedPreviewFile && canExpandPreview && (
           <div
             className="preview-modal-backdrop"
             role="presentation"
             onMouseDown={(event) => {
-              if (event.target === event.currentTarget) setIsPreviewExpanded(false)
+              if (event.target === event.currentTarget) closeExpandedPreview()
             }}
           >
             <section
@@ -980,14 +1125,26 @@ export default function App() {
                   <p>{selectedPreviewFile.name} · v{APP_VERSION} · {runtimeLabel}</p>
                 </div>
 
-                <button
-                  type="button"
-                  className="preview-modal-close"
-                  onClick={() => setIsPreviewExpanded(false)}
-                  aria-label="Close expanded preview"
-                >
-                  ×
-                </button>
+                <div className="modal-action-toolbar">
+                  <button
+                    type="button"
+                    className="model-action-button analysis-action"
+                    onClick={() => openPrintAnalysis(true)}
+                    disabled={!desktopMode || !canAnalyseSelected}
+                    title={printAnalysisActionTitle}
+                  >
+                    <span aria-hidden="true">◫</span>
+                    <span>Print Analysis</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="preview-modal-close"
+                    onClick={closeExpandedPreview}
+                    aria-label="Close expanded preview"
+                  >
+                    ×
+                  </button>
+                </div>
               </header>
 
               <div className="preview-modal-content">

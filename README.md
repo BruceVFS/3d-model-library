@@ -26,6 +26,7 @@ The source library is read-only by design. The app does not rename, move, overwr
 - Associated-file list with size and modified date
 - **Open source folder** on every model card/detail view in the desktop build
 - **Reveal selected file in Explorer** from the detail view in the desktop build
+- Desktop **Print Analysis proof of concept**: selected STL → PrusaSlicer CLI baseline slice → real time/filament metrics, local material cost calculation and slicer warnings
 
 ## Source-file safety
 
@@ -126,7 +127,8 @@ In browser mode, Chromium's `FileSystemFileHandle.getFile()` must be invoked on 
 - User-selected cover images
 - Thumbnail persistence between sessions
 - Exact duplicate verification via local hashing
-- Print Analysis / slicer integration
+- Four-way Print Analysis comparison (Fast / Balanced / Strength Optimised / Quality Optimised)
+- Named printer/material profiles and analysis caching
 - Optional AI recommendations
 
 ## Roadmap note — Print Analysis

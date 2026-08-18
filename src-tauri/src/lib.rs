@@ -1,9 +1,11 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     fs,
+    io::{BufRead, BufReader},
     path::{Path, PathBuf},
+    process::Command,
     sync::Mutex,
-    time::UNIX_EPOCH,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{ipc::Response, AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
@@ -282,6 +284,346 @@ async fn reveal_library_file(path: String, app: AppHandle) -> Result<(), String>
         .map_err(|error| format!("Unable to reveal source file: {error}"))
 }
 
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrintAnalysisRequest {
+    model_path: String,
+    slicer_path: String,
+    config_path: String,
+    material_density_g_per_cm3: f64,
+    spool_weight_g: f64,
+    spool_cost: f64,
+    currency: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PrintAnalysisResult {
+    slicer_name: String,
+    slicer_version: Option<String>,
+    estimated_seconds: u64,
+    filament_length_mm: Option<f64>,
+    filament_volume_cm3: Option<f64>,
+    filament_weight_g: Option<f64>,
+    material_cost: Option<f64>,
+    currency: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Default)]
+struct ParsedGcodeMetrics {
+    estimated_seconds: Option<u64>,
+    filament_length_mm: Option<f64>,
+    filament_volume_cm3: Option<f64>,
+}
+
+fn parse_metric(line: &str, prefix: &str) -> Option<f64> {
+    line.strip_prefix(prefix)?.trim().parse::<f64>().ok()
+}
+
+fn parse_duration_seconds(value: &str) -> Option<u64> {
+    let mut total = 0_u64;
+    let mut parsed_any = false;
+
+    for token in value.split_whitespace() {
+        if token.len() < 2 {
+            continue;
+        }
+        let (number, unit) = token.split_at(token.len() - 1);
+        let amount = number.parse::<u64>().ok()?;
+        match unit {
+            "d" => total = total.saturating_add(amount.saturating_mul(86_400)),
+            "h" => total = total.saturating_add(amount.saturating_mul(3_600)),
+            "m" => total = total.saturating_add(amount.saturating_mul(60)),
+            "s" => total = total.saturating_add(amount),
+            _ => continue,
+        }
+        parsed_any = true;
+    }
+
+    parsed_any.then_some(total)
+}
+
+fn parse_gcode_metrics(path: &Path) -> Result<ParsedGcodeMetrics, String> {
+    let file = fs::File::open(path)
+        .map_err(|error| format!("Unable to read temporary G-code: {error}"))?;
+    let reader = BufReader::new(file);
+    let mut metrics = ParsedGcodeMetrics::default();
+
+    for line in reader.lines() {
+        let line = line.map_err(|error| format!("Unable to parse temporary G-code: {error}"))?;
+        if metrics.filament_length_mm.is_none() {
+            metrics.filament_length_mm = parse_metric(&line, "; filament used [mm] = ");
+        }
+        if metrics.filament_volume_cm3.is_none() {
+            metrics.filament_volume_cm3 = parse_metric(&line, "; filament used [cm3] = ");
+        }
+        if metrics.estimated_seconds.is_none() {
+            if let Some(value) = line.strip_prefix("; estimated printing time (normal mode) = ") {
+                metrics.estimated_seconds = parse_duration_seconds(value.trim());
+            }
+        }
+    }
+
+    Ok(metrics)
+}
+
+fn looks_like_progress_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let digit_count = trimmed.chars().take_while(|character| character.is_ascii_digit()).count();
+    digit_count > 0 && trimmed[digit_count..].trim_start().starts_with("=>")
+}
+
+fn extract_slicer_warnings(output: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let mut capturing = false;
+
+    for raw_line in output.lines() {
+        let line = raw_line.trim();
+        if line.to_ascii_lowercase().starts_with("print warning:") {
+            capturing = true;
+            let message = line.split_once(':').map(|(_, value)| value.trim()).unwrap_or("");
+            if !message.is_empty() {
+                warnings.push(message.to_string());
+            }
+            continue;
+        }
+
+        if !capturing {
+            continue;
+        }
+        if looks_like_progress_line(line) || line.starts_with("Slicing result") {
+            capturing = false;
+            continue;
+        }
+        if !line.is_empty() && !warnings.iter().any(|existing| existing == line) {
+            warnings.push(line.to_string());
+        }
+    }
+
+    warnings
+}
+
+fn prusaslicer_version(slicer: &Path) -> Option<String> {
+    let output = Command::new(slicer).arg("--help").output().ok()?;
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    combined.lines().find_map(|line| {
+        let line = line.trim();
+        let remainder = line.strip_prefix("PrusaSlicer-")?;
+        remainder.split_whitespace().next().map(str::to_string)
+    })
+}
+
+fn canonical_external_file(requested: &str, label: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(requested)
+        .canonicalize()
+        .map_err(|error| format!("Unable to access {label}: {error}"))?;
+    if !path.is_file() {
+        return Err(format!("The selected {label} is not a file."));
+    }
+    Ok(path)
+}
+
+fn run_print_analysis(request: PrintAnalysisRequest, app: &AppHandle) -> Result<PrintAnalysisResult, String> {
+    if !request.material_density_g_per_cm3.is_finite() || request.material_density_g_per_cm3 <= 0.0 {
+        return Err("Material density must be greater than zero.".to_string());
+    }
+    if !request.spool_weight_g.is_finite() || request.spool_weight_g <= 0.0 {
+        return Err("Spool weight must be greater than zero.".to_string());
+    }
+    if !request.spool_cost.is_finite() || request.spool_cost <= 0.0 {
+        return Err("Spool cost must be greater than zero.".to_string());
+    }
+
+    let model = validated_library_path(app, &request.model_path)?;
+    if !model.is_file()
+        || model
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| !value.eq_ignore_ascii_case("stl"))
+            .unwrap_or(true)
+    {
+        return Err("Print Analysis currently supports STL files only.".to_string());
+    }
+
+    let slicer = canonical_external_file(&request.slicer_path, "PrusaSlicer executable")?;
+    let slicer_name = slicer.file_name().and_then(|value| value.to_str()).unwrap_or("");
+    if !slicer_name.eq_ignore_ascii_case("prusa-slicer-console.exe") {
+        return Err("For this proof of concept, select prusa-slicer-console.exe.".to_string());
+    }
+
+    let config = canonical_external_file(&request.config_path, "PrusaSlicer configuration")?;
+    if config
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| !value.eq_ignore_ascii_case("ini"))
+        .unwrap_or(true)
+    {
+        return Err("The baseline PrusaSlicer configuration must be an .ini file.".to_string());
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let temp_gcode = std::env::temp_dir().join(format!(
+        "modelarium-analysis-{}-{timestamp}.gcode",
+        std::process::id()
+    ));
+
+    let output = Command::new(&slicer)
+        .arg("--load")
+        .arg(&config)
+        .arg("--export-gcode")
+        .arg("--output")
+        .arg(&temp_gcode)
+        .arg(&model)
+        .output()
+        .map_err(|error| format!("Unable to start PrusaSlicer: {error}"))?;
+
+    let console_output = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut warnings = extract_slicer_warnings(&console_output);
+
+    if !output.status.success() {
+        let _ = fs::remove_file(&temp_gcode);
+        let detail = console_output
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or("PrusaSlicer returned an error.");
+        return Err(format!("PrusaSlicer analysis failed: {detail}"));
+    }
+    if !temp_gcode.is_file() {
+        return Err("PrusaSlicer completed without producing the expected temporary G-code file.".to_string());
+    }
+
+    let metrics = parse_gcode_metrics(&temp_gcode);
+    if let Err(error) = fs::remove_file(&temp_gcode) {
+        warnings.push(format!("Temporary G-code cleanup failed: {error}"));
+    }
+    let metrics = metrics?;
+    let estimated_seconds = metrics
+        .estimated_seconds
+        .ok_or_else(|| "The G-code did not contain an estimated printing time.".to_string())?;
+
+    let filament_weight_g = metrics
+        .filament_volume_cm3
+        .map(|volume| volume * request.material_density_g_per_cm3);
+    let material_cost = filament_weight_g
+        .map(|weight| (weight / request.spool_weight_g) * request.spool_cost);
+
+    Ok(PrintAnalysisResult {
+        slicer_name: "PrusaSlicer".to_string(),
+        slicer_version: prusaslicer_version(&slicer),
+        estimated_seconds,
+        filament_length_mm: metrics.filament_length_mm,
+        filament_volume_cm3: metrics.filament_volume_cm3,
+        filament_weight_g,
+        material_cost,
+        currency: if request.currency.trim().is_empty() {
+            "R".to_string()
+        } else {
+            request.currency.trim().to_string()
+        },
+        warnings,
+    })
+}
+
+#[tauri::command]
+async fn detect_prusaslicer() -> Result<Option<String>, String> {
+    let standard = PathBuf::from(r"C:\Program Files\Prusa3D\PrusaSlicer\prusa-slicer-console.exe");
+    if standard.is_file() {
+        return Ok(Some(standard.to_string_lossy().into_owned()));
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Ok(output) = Command::new("where.exe").arg("prusa-slicer-console.exe").output() {
+        if output.status.success() {
+            if let Some(first) = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .find(|line| !line.trim().is_empty())
+            {
+                let candidate = PathBuf::from(first.trim());
+                if candidate.is_file() {
+                    return Ok(Some(candidate.to_string_lossy().into_owned()));
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+#[tauri::command]
+async fn choose_prusaslicer_executable(app: AppHandle) -> Result<Option<String>, String> {
+    let selection = app
+        .dialog()
+        .file()
+        .set_title("Choose PrusaSlicer console executable")
+        .add_filter("PrusaSlicer console", &["exe"])
+        .blocking_pick_file();
+    let Some(selection) = selection else {
+        return Ok(None);
+    };
+    let path = selection
+        .into_path()
+        .map_err(|error| format!("Unable to use the selected executable: {error}"))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+async fn choose_prusaslicer_config(app: AppHandle) -> Result<Option<String>, String> {
+    let selection = app
+        .dialog()
+        .file()
+        .set_title("Choose exported PrusaSlicer configuration")
+        .add_filter("PrusaSlicer configuration", &["ini"])
+        .blocking_pick_file();
+    let Some(selection) = selection else {
+        return Ok(None);
+    };
+    let path = selection
+        .into_path()
+        .map_err(|error| format!("Unable to use the selected configuration: {error}"))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+async fn analyse_print(request: PrintAnalysisRequest, app: AppHandle) -> Result<PrintAnalysisResult, String> {
+    tauri::async_runtime::spawn_blocking(move || run_print_analysis(request, &app))
+        .await
+        .map_err(|error| format!("Print Analysis task failed: {error}"))?
+}
+
+#[cfg(test)]
+mod print_analysis_tests {
+    use super::{extract_slicer_warnings, parse_duration_seconds};
+
+    #[test]
+    fn parses_prusaslicer_duration() {
+        assert_eq!(parse_duration_seconds("31m 0s"), Some(1_860));
+        assert_eq!(parse_duration_seconds("1h 2m 3s"), Some(3_723));
+    }
+
+    #[test]
+    fn captures_warning_block() {
+        let sample = "69 => Alert if supports needed\nprint warning: Detected print stability issues:\n\nWedgeScraper.stl\nLow bed adhesion\n\nConsider enabling brim.\n89 => Calculating overhanging perimeters";
+        let warnings = extract_slicer_warnings(sample);
+        assert!(warnings.iter().any(|line| line.contains("Low bed adhesion")));
+        assert!(warnings.iter().any(|line| line.contains("Consider enabling brim")));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -292,7 +634,11 @@ pub fn run() {
             choose_and_scan_library,
             read_library_file,
             open_containing_folder,
-            reveal_library_file
+            reveal_library_file,
+            detect_prusaslicer,
+            choose_prusaslicer_executable,
+            choose_prusaslicer_config,
+            analyse_print
         ])
         .run(tauri::generate_context!())
         .expect("error while running 3D Model Library");
