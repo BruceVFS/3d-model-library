@@ -495,13 +495,13 @@ export default function App() {
             <div>
               <div className="eyebrow">SOURCE LIBRARY</div>
               <h2 title={rootPath}>{rootName ?? 'No folder selected'}</h2>
-              <p className="muted">
-                {rootName
-                  ? 'Your source files remain in place. The catalogue only reads them.'
-                  : supportsDirectoryAccess
-                    ? 'Choose your 3D model library folder to begin.'
-                    : folderAccessMessage}
-              </p>
+              {(rootName || supportsDirectoryAccess) && (
+                <p className="muted">
+                  {rootName
+                    ? 'Your source files remain in place. The catalogue only reads them.'
+                    : 'Choose your 3D model library folder to begin.'}
+                </p>
+              )}
             </div>
 
             <div className="stat-row">
