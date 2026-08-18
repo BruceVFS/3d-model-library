@@ -115,6 +115,54 @@ function formatInfill(result?: PrintAnalysisResult) {
   return result?.infillPercent != null ? `${result.infillPercent}%` : 'Baseline'
 }
 
+type ComparisonInsight = {
+  title: string
+  body: string
+}
+
+function describeTimeDifference(
+  strategyLabel: string,
+  strategySeconds: number,
+  balancedSeconds: number,
+) {
+  const difference = strategySeconds - balancedSeconds
+  if (difference === 0) return `${strategyLabel} takes the same estimated time as Balanced.`
+  return `${strategyLabel} is ${formatDuration(Math.abs(difference))} ${difference < 0 ? 'quicker' : 'slower'} than Balanced.`
+}
+
+function describeWeightDifference(
+  strategyWeight?: number,
+  balancedWeight?: number,
+) {
+  if (strategyWeight == null || balancedWeight == null) return ''
+  const difference = strategyWeight - balancedWeight
+  if (Math.abs(difference) < 0.05) return ' Filament use is effectively the same.'
+  return ` It uses ${Math.abs(difference).toFixed(1)} g ${difference < 0 ? 'less' : 'more'} filament.`
+}
+
+function buildComparisonInsights(results: PrintStrategyResults): ComparisonInsight[] {
+  const balanced = results.balanced
+  if (!balanced) return []
+
+  const comparisons: Array<[ComparisonPrintStrategy, string]> = [
+    ['fast', 'Fast'],
+    ['strength', 'Strength Optimised'],
+    ['quality', 'Quality Optimised'],
+  ]
+
+  return comparisons.flatMap(([strategy, label]) => {
+    const candidate = results[strategy]
+    if (!candidate) return []
+
+    return [{
+      title: `${label} vs Balanced`,
+      body:
+        describeTimeDifference(label, candidate.estimatedSeconds, balanced.estimatedSeconds) +
+        describeWeightDifference(candidate.filamentWeightG, balanced.filamentWeightG),
+    }]
+  })
+}
+
 export function formatPrintAnalysisSummary(result: PrintAnalysisResult) {
   const parts = [formatDuration(result.estimatedSeconds)]
   if (result.filamentWeightG != null) parts.push(`${result.filamentWeightG.toFixed(1)} g`)
@@ -284,6 +332,7 @@ export function PrintAnalysisPanel({
 
   const hasComparison = STRATEGIES.some((definition) => comparisonResults[definition.id])
   const balanced = comparisonResults.balanced
+  const comparisonInsights = buildComparisonInsights(comparisonResults)
 
   return (
     <section className="print-analysis-panel" aria-label="Print Analysis">
@@ -453,8 +502,52 @@ export function PrintAnalysisPanel({
               </div>
 
               <p className="strategy-disclaimer">
-                Starter overlays: Fast 0.28 mm / 2 walls / 10% infill · Balanced 0.20 / 3 / 15% · Strength Optimised 0.20 / 5 / 30% · Quality Optimised 0.12 / 3 / 15%. These are comparison heuristics, not guarantees of strength, finish or suitability.
+                Strategy presets are comparison heuristics, not guarantees of strength, finish or suitability.
               </p>
+
+              {comparisonInsights.length > 0 && (
+                <section className="analysis-insights" aria-label="Print Analysis quick read">
+                  <div className="analysis-insights-heading">
+                    <div>
+                      <div className="eyebrow">PRINT ANALYSIS QUICK READ</div>
+                      <h5>What changes compared with Balanced?</h5>
+                      <p className="analysis-insights-context">Based on real PrusaSlicer results for this model.</p>
+                    </div>
+                  </div>
+
+                  <div className="analysis-insight-grid">
+                    {comparisonInsights.map((insight) => (
+                      <article className="analysis-insight-card" key={insight.title}>
+                        <strong>{insight.title}</strong>
+                        <p>{insight.body}</p>
+                      </article>
+                    ))}
+                  </div>
+
+                  <div className="analysis-best-for">
+                    <div>
+                      <strong>Fast</strong>
+                      <span>Best suited when elapsed print time matters most.</span>
+                    </div>
+                    <div className="analysis-best-for-balanced">
+                      <strong>Balanced</strong>
+                      <span>General-purpose reference for everyday printing.</span>
+                    </div>
+                    <div>
+                      <strong>Strength Optimised</strong>
+                      <span>Best suited when wall and infill emphasis matters more than material use.</span>
+                    </div>
+                    <div>
+                      <strong>Quality Optimised</strong>
+                      <span>Best suited when finer layer resolution matters most.</span>
+                    </div>
+                  </div>
+
+                  <p className="analysis-insights-note">
+                    These observations are deterministic comparisons of this model's real slicer results. They are not an AI recommendation and do not claim a universal best strategy.
+                  </p>
+                </section>
+              )}
 
               <div className="strategy-warning-grid">
                 {STRATEGIES.map((definition) => {
@@ -477,14 +570,16 @@ export function PrintAnalysisPanel({
 
           {result && (
             <div className="analysis-result">
-              <div className="analysis-result-header">
+              <div className="analysis-result-header analysis-result-header-polished">
                 <div>
                   <div className="eyebrow">BASELINE RESULT</div>
-                  <strong>{result.slicerName}{result.slicerVersion ? ` ${result.slicerVersion}` : ''}</strong>
+                  <div className="analysis-result-source-line">
+                    <strong>{result.slicerName}{result.slicerVersion ? ` ${result.slicerVersion}` : ''}</strong>
+                    <span>Original profile — no strategy overrides</span>
+                  </div>
                 </div>
-                <span>original profile · no strategy overrides</span>
               </div>
-              <div className="analysis-metrics">
+              <div className="analysis-metrics analysis-metrics-five">
                 <div><span>Estimated time</span><strong>{formatDuration(result.estimatedSeconds)}</strong></div>
                 <div><span>Filament length</span><strong>{result.filamentLengthMm != null ? `${(result.filamentLengthMm / 1000).toFixed(2)} m` : '—'}</strong></div>
                 <div><span>Filament volume</span><strong>{result.filamentVolumeCm3 != null ? `${result.filamentVolumeCm3.toFixed(2)} cm³` : '—'}</strong></div>

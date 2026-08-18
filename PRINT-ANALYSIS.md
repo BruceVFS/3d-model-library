@@ -45,3 +45,24 @@ Modelarium can run four sequential PrusaSlicer analyses derived from the selecte
 | Quality Optimised | 0.12 mm | 3 | 15% |
 
 These are starter comparison heuristics, not guarantees of strength, finish, speed or suitability. PrusaSlicer remains the source of truth for estimated time, filament metrics and slicer warnings. Strategy runs are sequential to avoid launching four slicer processes at once.
+
+## Deterministic quick read
+
+After all four strategy runs complete, Modelarium presents a small **Quick read** section.
+
+The quick read:
+
+- compares Fast, Strength Optimised and Quality Optimised directly with Balanced;
+- calculates time differences from PrusaSlicer's estimated seconds;
+- calculates filament differences from the slicer-derived volume converted using the configured material density;
+- provides a fixed "Best suited when..." explanation for each strategy's intended purpose.
+
+This layer does not use AI, does not assign an opaque score and does not declare a universal winner. It only interprets the comparison results already produced for the selected model.
+
+## Presentation polish
+
+The comparison screen avoids repeating strategy override values beneath the table because the active layer height, wall count and infill percentage are already visible in the result columns.
+
+The Quick Read states that its observations are based on real PrusaSlicer results for the selected model.
+
+The baseline result is intentionally secondary to the four-strategy comparison and presents its five primary metrics in a balanced single-row layout on wide desktop views, wrapping responsively on narrower windows.
