@@ -198,7 +198,7 @@ export function PrintAnalysisPanel({
   const [isAnalysingBaseline, setIsAnalysingBaseline] = useState(false)
   const [comparisonProgress, setComparisonProgress] = useState<{ strategy: ComparisonPrintStrategy; index: number }>()
   const [isDetecting, setIsDetecting] = useState(false)
-  const autoBaselineAttemptedRef = useRef<string>()
+  const autoBaselineAttemptedRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     try {
