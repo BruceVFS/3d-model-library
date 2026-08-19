@@ -1390,3 +1390,207 @@ html[data-theme='light'] .strategy-warning-card summary { color: #7f5d13; }
     gap: 2px;
   }
 }
+
+/* Associated-file mini navigation. */
+.file-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.file-section-heading h3 {
+  margin: 0;
+}
+
+.file-section-heading > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.associated-file-tools {
+  margin-bottom: 9px;
+}
+
+.associated-file-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #11151a;
+  color: var(--muted);
+}
+
+.associated-file-search:focus-within {
+  border-color: #6f91dd;
+  box-shadow: 0 0 0 2px rgba(111, 145, 221, .10);
+}
+
+.associated-file-search > span {
+  flex: 0 0 auto;
+  font-size: 14px;
+}
+
+.associated-file-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+}
+
+.associated-file-search input::placeholder {
+  color: #667286;
+}
+
+.associated-file-search-clear {
+  flex: 0 0 auto;
+  width: 23px;
+  height: 23px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.associated-file-search-clear:hover {
+  background: #1a2029;
+  color: var(--text);
+}
+
+.associated-file-filters {
+  display: flex;
+  gap: 5px;
+  margin-top: 7px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.associated-file-filter {
+  flex: 0 0 auto;
+  min-height: 27px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #11151a;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.associated-file-filter span {
+  margin-left: 2px;
+  color: #72809a;
+  font-size: 8px;
+}
+
+.associated-file-filter:hover:not(:disabled) {
+  border-color: #465875;
+  color: var(--text);
+}
+
+.associated-file-filter.active {
+  border-color: #7395e4;
+  background: #172033;
+  color: #dbe6ff;
+}
+
+.associated-file-filter.active span {
+  color: #9eb8f1;
+}
+
+.associated-file-filter:disabled {
+  opacity: .38;
+  cursor: default;
+}
+
+.file-list.file-list-scrollable {
+  max-height: min(48vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+}
+
+.associated-file-empty {
+  display: grid;
+  gap: 3px;
+  place-items: center;
+  min-height: 96px;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.associated-file-empty strong {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.associated-file-empty span {
+  font-size: 9px;
+}
+
+html[data-theme='light'] .associated-file-search,
+html[data-theme='light'] .associated-file-filter {
+  background: #ffffff;
+}
+
+html[data-theme='light'] .associated-file-search-clear:hover {
+  background: #eef3f9;
+}
+
+html[data-theme='light'] .associated-file-filter.active {
+  background: #edf3ff;
+  color: #274c8e;
+}
+
+@media (max-height: 760px) {
+  .file-list.file-list-scrollable {
+    max-height: 360px;
+  }
+}
+
+/* Sticky selected-model preview inside the detail panel.
+   The detail panel itself already owns vertical scrolling; on roomy desktop
+   windows the active preview remains visible while summary/file content moves. */
+@media (min-width: 961px) and (min-height: 700px) {
+  .detail-preview-stage {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    isolation: isolate;
+  }
+
+  .detail-preview-stage::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: -10px -2px -12px;
+    background: #0e1116;
+    box-shadow: 0 16px 20px -22px rgba(0, 0, 0, .95);
+    pointer-events: none;
+  }
+
+  html[data-theme='light'] .detail-preview-stage::after {
+    background: #f8fafc;
+    box-shadow: 0 16px 20px -22px rgba(63, 78, 103, .42);
+  }
+}

@@ -26,6 +26,7 @@ import {
 const APP_VERSION = packageJson.version
 
 type ThemePreference = 'system' | 'light' | 'dark'
+type AssociatedFileFilter = 'all' | 'models' | 'images' | 'packages'
 
 const THEME_STORAGE_KEY = 'modelarium-theme'
 
@@ -101,6 +102,8 @@ export default function App() {
   const [typeFilter, setTypeFilter] = useState<'all' | SupportedExtension>('all')
   const [selectedId, setSelectedId] = useState<string>()
   const [selectedFileId, setSelectedFileId] = useState<string>()
+  const [associatedFileQuery, setAssociatedFileQuery] = useState('')
+  const [associatedFileFilter, setAssociatedFileFilter] = useState<AssociatedFileFilter>('all')
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
   const [isPrintAnalysisOpen, setIsPrintAnalysisOpen] = useState(false)
@@ -248,6 +251,33 @@ export default function App() {
   const selected = collections.find((collection) => collection.id === selectedId)
   const defaultPreviewFile = selected?.geometryFiles.find((file) => file.extension === 'stl') ?? selected?.cover
   const selectedPreviewFile = selected?.files.find((file) => file.id === selectedFileId) ?? defaultPreviewFile
+
+  const associatedFileCounts = useMemo(() => {
+    const selectedFiles = selected?.files ?? []
+    return {
+      all: selectedFiles.length,
+      models: selectedFiles.filter((file) => file.extension === 'stl' || file.extension === '3mf').length,
+      images: selectedFiles.filter((file) => ['jpg', 'jpeg', 'png', 'webp'].includes(file.extension)).length,
+      packages: selectedFiles.filter((file) => file.extension === 'zip').length,
+    }
+  }, [selected])
+
+  const filteredAssociatedFiles = useMemo(() => {
+    const needle = associatedFileQuery.trim().toLowerCase()
+    const selectedFiles = selected?.files ?? []
+
+    const matchesCategory = (file: LibraryFile) => {
+      if (associatedFileFilter === 'all') return true
+      if (associatedFileFilter === 'models') return file.extension === 'stl' || file.extension === '3mf'
+      if (associatedFileFilter === 'images') return ['jpg', 'jpeg', 'png', 'webp'].includes(file.extension)
+      return file.extension === 'zip'
+    }
+
+    return selectedFiles
+      .filter((file) => matchesCategory(file) && (!needle || file.name.toLowerCase().includes(needle)))
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }))
+  }, [associatedFileFilter, associatedFileQuery, selected])
   const selectedDuplicateMatches = selectedPreviewFile
     ? possibleDuplicates.get(duplicateSignature(selectedPreviewFile))
     : undefined
@@ -314,6 +344,11 @@ export default function App() {
     if (!selectedPreviewFile) return
     setStrategyResults((current) => ({ ...current, [selectedPreviewFile.id]: results }))
   }
+
+  useEffect(() => {
+    setAssociatedFileQuery('')
+    setAssociatedFileFilter('all')
+  }, [selectedId])
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -915,36 +950,95 @@ export default function App() {
             </div>
 
             <section className="file-section">
-              <h3>Associated files</h3>
-              <div className="file-list">
-                {selected.files.map((file) => (
-                  <button
-                    type="button"
-                    className={[
-                      'file-row',
-                      selectedPreviewFile?.id === file.id ? 'selected-file' : '',
-                      duplicateFileIds.has(file.id) ? 'possible-duplicate-file' : '',
-                    ].filter(Boolean).join(' ')}
-                    key={file.id}
-                    onClick={() => setSelectedFileId(file.id)}
-                    title={`Preview ${file.name}`}
-                  >
-                    <div className="file-thumbnail" aria-hidden="true">
-                      <FileThumbnail file={file} />
-                    </div>
-                    <FileBadge file={file} />
-                    <div className="file-name">
-                      <strong>{file.name}</strong>
-                      <span>{formatBytes(file.size)} · {new Date(file.lastModified).toLocaleDateString()}</span>
-                    </div>
+              <div className="file-section-heading">
+                <h3>Associated files</h3>
+                <span>
+                  {filteredAssociatedFiles.length === selected.files.length
+                    ? `${selected.files.length} file${selected.files.length === 1 ? '' : 's'}`
+                    : `${filteredAssociatedFiles.length} of ${selected.files.length}`}
+                </span>
+              </div>
 
-                    {duplicateFileIds.has(file.id) && (
-                      <span className="duplicate-file-badge">
-                        DUP ×{possibleDuplicates.get(duplicateSignature(file))?.length ?? 2}
-                      </span>
+              {selected.files.length > 6 && (
+                <div className="associated-file-tools">
+                  <label className="associated-file-search">
+                    <span aria-hidden="true">⌕</span>
+                    <input
+                      type="search"
+                      value={associatedFileQuery}
+                      onChange={(event) => setAssociatedFileQuery(event.currentTarget.value)}
+                      placeholder="Search files in this model"
+                      aria-label="Search associated files"
+                    />
+                    {associatedFileQuery && (
+                      <button
+                        type="button"
+                        className="associated-file-search-clear"
+                        onClick={() => setAssociatedFileQuery('')}
+                        aria-label="Clear associated file search"
+                        title="Clear search"
+                      >
+                        ×
+                      </button>
                     )}
-                  </button>
-                ))}
+                  </label>
+
+                  <div className="associated-file-filters" aria-label="Associated file type filter">
+                    {([
+                      ['all', 'All', associatedFileCounts.all],
+                      ['models', 'Models', associatedFileCounts.models],
+                      ['images', 'Images', associatedFileCounts.images],
+                      ['packages', 'Packages', associatedFileCounts.packages],
+                    ] as Array<[AssociatedFileFilter, string, number]>).map(([value, label, count]) => (
+                      <button
+                        type="button"
+                        key={value}
+                        className={associatedFileFilter === value ? 'associated-file-filter active' : 'associated-file-filter'}
+                        onClick={() => setAssociatedFileFilter(value)}
+                        disabled={value !== 'all' && count === 0}
+                      >
+                        {label} <span>{count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className={selected.files.length > 6 ? 'file-list file-list-scrollable' : 'file-list'}>
+                {filteredAssociatedFiles.length > 0 ? (
+                  filteredAssociatedFiles.map((file) => (
+                    <button
+                      type="button"
+                      className={[
+                        'file-row',
+                        selectedPreviewFile?.id === file.id ? 'selected-file' : '',
+                        duplicateFileIds.has(file.id) ? 'possible-duplicate-file' : '',
+                      ].filter(Boolean).join(' ')}
+                      key={file.id}
+                      onClick={() => setSelectedFileId(file.id)}
+                      title={`Preview ${file.name}`}
+                    >
+                      <div className="file-thumbnail" aria-hidden="true">
+                        <FileThumbnail file={file} />
+                      </div>
+                      <FileBadge file={file} />
+                      <div className="file-name">
+                        <strong>{file.name}</strong>
+                        <span>{formatBytes(file.size)} · {new Date(file.lastModified).toLocaleDateString()}</span>
+                      </div>
+                      {duplicateFileIds.has(file.id) && (
+                        <span className="duplicate-file-badge">
+                          DUP ×{possibleDuplicates.get(duplicateSignature(file))?.length ?? 2}
+                        </span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="associated-file-empty">
+                    <strong>No matching files</strong>
+                    <span>Try a different filename or file-type filter.</span>
+                  </div>
+                )}
               </div>
 
               {desktopMode && selectedPreviewFile?.nativePath && (
@@ -953,7 +1047,6 @@ export default function App() {
                 </button>
               )}
             </section>
-
             {selectedPreviewFile && selectedDuplicateOthers.length > 0 && (
               <section className="duplicate-locations">
                 <div className="duplicate-locations-heading">

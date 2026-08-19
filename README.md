@@ -154,3 +154,7 @@ The sticky application header always identifies the runtime:
 * **Hosted Web** — the same frontend served from a non-local web host.
 
 The introductory product panel explains the catalogue purpose and disappears after a library is chosen. **About** opens product/privacy/contact information and the planned Print Analysis direction. Theme preference supports **System**, **Light** and **Dark** and is stored locally when browser storage is available.
+
+### Associated file navigation
+
+Model detail views keep large associated-file collections manageable without changing source grouping. Collections with more than six files gain a local filename search, category filters for Models / Images / Packages, natural alphabetical sorting and a bounded internal file-list scroller. These controls operate only on the selected collection and do not change or reorganise source files.
