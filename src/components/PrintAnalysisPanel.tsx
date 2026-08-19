@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LibraryFile } from '../lib/library'
 import {
   analyseDesktopPrint,
@@ -198,6 +198,7 @@ export function PrintAnalysisPanel({
   const [isAnalysingBaseline, setIsAnalysingBaseline] = useState(false)
   const [comparisonProgress, setComparisonProgress] = useState<{ strategy: ComparisonPrintStrategy; index: number }>()
   const [isDetecting, setIsDetecting] = useState(false)
+  const autoBaselineAttemptedRef = useRef<string>()
 
   useEffect(() => {
     try {
@@ -306,6 +307,14 @@ export function PrintAnalysisPanel({
       setIsAnalysingBaseline(false)
     }
   }
+
+  useEffect(() => {
+    if (!file?.id || !canAnalyse || result || isBusy) return
+    if (autoBaselineAttemptedRef.current === file.id) return
+
+    autoBaselineAttemptedRef.current = file.id
+    void analyseBaseline()
+  }, [canAnalyse, file?.id, result, isBusy])
 
   const compareStrategies = async () => {
     setError(undefined)

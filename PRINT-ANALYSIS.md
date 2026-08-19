@@ -66,3 +66,11 @@ The comparison screen avoids repeating strategy override values beneath the tabl
 The Quick Read states that its observations are based on real PrusaSlicer results for the selected model.
 
 The baseline result is intentionally secondary to the four-strategy comparison and presents its five primary metrics in a balanced single-row layout on wide desktop views, wrapping responsively on narrower windows.
+
+## Automatic baseline analysis
+
+When Print Analysis opens for an STL, Modelarium automatically starts the baseline slice when the persisted PrusaSlicer executable, baseline profile and material/cost settings are already complete.
+
+The automatic run is attempted once for the selected STL while that Print Analysis panel instance is open. If that STL already has a baseline result in the current application session, Modelarium displays the existing result instead of immediately slicing it again.
+
+If automatic analysis fails, the error remains visible and the existing **Analyse baseline** button remains available for a manual retry.
