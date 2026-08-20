@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::{
     fs,
     io::{BufRead, BufReader},
@@ -8,6 +10,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{ipc::Response, AppHandle, Manager};
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 use tauri_plugin_dialog::DialogExt;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["stl", "3mf", "zip", "jpg", "jpeg", "png", "webp"];
@@ -479,7 +484,10 @@ fn extract_slicer_warnings(output: &str) -> Vec<String> {
 }
 
 fn prusaslicer_version(slicer: &Path) -> Option<String> {
-    let output = Command::new(slicer).arg("--help").output().ok()?;
+    let mut command = Command::new(slicer);
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command.arg("--help").output().ok()?;
     let combined = format!(
         "{}\n{}",
         String::from_utf8_lossy(&output.stdout),
@@ -560,6 +568,8 @@ fn run_print_analysis(
     ));
 
     let mut command = Command::new(&slicer);
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
     command.arg("--load").arg(&config);
     apply_strategy_overrides(&mut command, strategy);
     let output = command

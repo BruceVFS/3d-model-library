@@ -107,6 +107,7 @@ export default function App() {
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false)
   const [isPrintAnalysisOpen, setIsPrintAnalysisOpen] = useState(false)
+  const [isDesktopAnalysisNoticeOpen, setIsDesktopAnalysisNoticeOpen] = useState(false)
   const [returnToPreviewAfterAnalysis, setReturnToPreviewAfterAnalysis] = useState(false)
   const [returnToAnalysisAfterPreview, setReturnToAnalysisAfterPreview] = useState(false)
   const [analysisResults, setAnalysisResults] = useState<Record<string, PrintAnalysisResult>>({})
@@ -287,15 +288,18 @@ export default function App() {
       (selectedPreviewFile.extension === 'stl' ||
         ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension)),
   )
-  const canAnalyseSelected = Boolean(selectedPreviewFile?.extension === 'stl' && selectedPreviewFile.nativePath)
+  const isStlSelected = selectedPreviewFile?.extension === 'stl'
+  const canAnalyseSelected = Boolean(isStlSelected && selectedPreviewFile?.nativePath)
   const selectedAnalysisResult = selectedPreviewFile ? analysisResults[selectedPreviewFile.id] : undefined
   const selectedStrategyResults: PrintStrategyResults = selectedPreviewFile ? (strategyResults[selectedPreviewFile.id] ?? {}) : {}
   const selectedSummaryResult = selectedStrategyResults.balanced ?? selectedAnalysisResult
-  const printAnalysisActionTitle = !desktopMode
-    ? 'Print Analysis requires the Windows Desktop edition.'
-    : !canAnalyseSelected
-      ? 'Select an STL file to use Print Analysis.'
-      : 'Analyse the selected STL with PrusaSlicer.'
+  const printAnalysisActionTitle = !isStlSelected
+    ? 'Select an STL file to use Print Analysis.'
+    : !desktopMode
+      ? 'Print Analysis requires the installable Windows Desktop edition.'
+      : !canAnalyseSelected
+        ? 'Print Analysis is unavailable for this file.'
+        : 'Analyse the selected STL with PrusaSlicer.'
 
   const openExpandedPreview = (returnToAnalysis = false) => {
     if (!canExpandPreview) return
@@ -312,7 +316,14 @@ export default function App() {
     }
   }
   const openPrintAnalysis = (returnToPreview = false) => {
-    if (!desktopMode || !canAnalyseSelected) return
+    if (!isStlSelected) return
+
+    if (!desktopMode) {
+      setIsDesktopAnalysisNoticeOpen(true)
+      return
+    }
+
+    if (!canAnalyseSelected) return
     setReturnToAnalysisAfterPreview(false)
     setReturnToPreviewAfterAnalysis(returnToPreview)
     setIsPreviewExpanded(false)
@@ -328,6 +339,7 @@ export default function App() {
   const dismissModelModals = () => {
     setIsPreviewExpanded(false)
     setIsPrintAnalysisOpen(false)
+    setIsDesktopAnalysisNoticeOpen(false)
     setReturnToPreviewAfterAnalysis(false)
     setReturnToAnalysisAfterPreview(false)
   }
@@ -400,6 +412,21 @@ export default function App() {
       document.body.style.overflow = previousOverflow
     }
   }, [isPreviewExpanded, returnToAnalysisAfterPreview])
+
+  useEffect(() => {
+    if (!isDesktopAnalysisNoticeOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsDesktopAnalysisNoticeOpen(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isDesktopAnalysisNoticeOpen])
 
   useEffect(() => {
     if (!isPrintAnalysisOpen) return
@@ -511,7 +538,12 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">M3D</div>
+          <img
+            className="brand-mark"
+            src={`${import.meta.env.BASE_URL}modelarium-icon.png`}
+            alt=""
+            aria-hidden="true"
+          />
           <div>
             <h1>Modelarium</h1>
             <p>
@@ -912,7 +944,7 @@ export default function App() {
                   type="button"
                   className="model-action-button analysis-action"
                   onClick={() => openPrintAnalysis(false)}
-                  disabled={!desktopMode || !canAnalyseSelected}
+                  disabled={!isStlSelected || (desktopMode && !canAnalyseSelected)}
                   title={printAnalysisActionTitle}
                 >
                   <span aria-hidden="true">◫</span>
@@ -1116,19 +1148,20 @@ export default function App() {
                 </section>
 
                 <section>
-                  <h3>Local React edition</h3>
+                  <h3>Use Modelarium your way</h3>
                   <p>
-                    A downloadable local React edition is available. For access or more information, contact{' '}
+                    Modelarium is available as an installable Windows Desktop edition, Hosted Web or Local Web.
+                    For access, downloads or more information, contact{' '}
                     <a href="mailto:bruce@sutherand.co.za">bruce@sutherand.co.za</a>.
                   </p>
                 </section>
 
                 <section className="about-wide">
-                  <h3>In development — Print Analysis</h3>
+                  <h3>Print Analysis is here</h3>
                   <p>
-                    Print Analysis is now being developed in the Windows Desktop edition, starting with real PrusaSlicer-derived
-                     time and material metrics. The planned comparison will add Fast, Strength Optimised, Quality Optimised
-                     and Balanced strategies; any optional AI layer will explain trade-offs rather than invent figures.
+                    Windows Desktop Print Analysis uses your local PrusaSlicer installation to calculate real print time,
+                    filament use and material cost, then compares Fast, Balanced, Strength Optimised and Quality Optimised
+                    strategies. Analysis runs locally on your computer and does not upload your model.
                   </p>
                 </section>
               </div>
@@ -1149,6 +1182,62 @@ export default function App() {
                   <span>v{APP_VERSION} · {runtimeLabel}</span>
                   <a href="https://modelarium.co.za" target="_blank" rel="noreferrer">modelarium.co.za</a>
                 </div>
+              </footer>
+            </section>
+          </div>
+        )}
+
+        {isDesktopAnalysisNoticeOpen && selectedPreviewFile && (
+          <div
+            className="about-modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setIsDesktopAnalysisNoticeOpen(false)
+            }}
+          >
+            <section
+              className="about-modal desktop-analysis-notice"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="desktop-analysis-notice-title"
+            >
+              <button
+                type="button"
+                className="about-modal-close"
+                onClick={() => setIsDesktopAnalysisNoticeOpen(false)}
+                aria-label="Close Print Analysis information"
+              >
+                ×
+              </button>
+
+              <div className="eyebrow">PRINT ANALYSIS</div>
+              <h2 id="desktop-analysis-notice-title">Available in Modelarium Windows Desktop</h2>
+              <p className="about-lead">
+                Print Analysis uses a local PrusaSlicer installation to calculate real print time, filament use,
+                material cost and the Fast, Balanced, Strength Optimised and Quality Optimised comparisons.
+              </p>
+
+              <div className="desktop-analysis-notice-card">
+                <strong>Why the installable version?</strong>
+                <p>
+                  A browser cannot launch the local PrusaSlicer executable. The installable Windows Desktop edition
+                  performs the slicing locally on your computer and keeps your model files on your device.
+                </p>
+              </div>
+
+              <div className="desktop-analysis-notice-privacy">
+                <span aria-hidden="true">✓</span>
+                <span>No STL is uploaded for Print Analysis.</span>
+              </div>
+
+              <footer className="desktop-analysis-notice-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => setIsDesktopAnalysisNoticeOpen(false)}
+                >
+                  Got it
+                </button>
               </footer>
             </section>
           </div>
@@ -1233,7 +1322,7 @@ export default function App() {
                     type="button"
                     className="model-action-button analysis-action"
                     onClick={() => openPrintAnalysis(true)}
-                    disabled={!desktopMode || !canAnalyseSelected}
+                    disabled={!isStlSelected || (desktopMode && !canAnalyseSelected)}
                     title={printAnalysisActionTitle}
                   >
                     <span aria-hidden="true">◫</span>

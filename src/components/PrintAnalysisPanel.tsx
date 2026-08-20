@@ -342,6 +342,12 @@ export function PrintAnalysisPanel({
   const hasComparison = STRATEGIES.some((definition) => comparisonResults[definition.id])
   const balanced = comparisonResults.balanced
   const comparisonInsights = buildComparisonInsights(comparisonResults)
+  const activityTitle = isAnalysingBaseline ? 'Analysing with PrusaSlicer' : 'Comparing print strategies'
+  const activityDetail = isAnalysingBaseline
+    ? 'Baseline analysis'
+    : comparisonProgress
+      ? `${STRATEGY_LABELS[comparisonProgress.strategy]} · ${comparisonProgress.index + 1} of ${STRATEGIES.length}`
+      : ''
 
   return (
     <section className="print-analysis-panel" aria-label="Print Analysis">
@@ -455,6 +461,39 @@ export function PrintAnalysisPanel({
               </button>
             </div>
           </div>
+
+          {isBusy && (
+            <section className="analysis-activity" role="status" aria-live="polite">
+              <div className="analysis-activity-main">
+                <span className="analysis-activity-spinner" aria-hidden="true" />
+                <div className="analysis-activity-copy">
+                  <strong>{activityTitle}</strong>
+                  <span>{activityDetail}</span>
+                  <small>PrusaSlicer is running locally on this computer. Modelarium does not upload your model.</small>
+                </div>
+              </div>
+
+              {isComparing && comparisonProgress && (
+                <div className="analysis-activity-strategies" aria-label="Strategy comparison progress">
+                  {STRATEGIES.map((definition, index) => {
+                    const state =
+                      index < comparisonProgress.index
+                        ? 'complete'
+                        : index === comparisonProgress.index
+                          ? 'active'
+                          : 'pending'
+
+                    return (
+                      <div className={`analysis-activity-step ${state}`} key={definition.id}>
+                        <span aria-hidden="true">{state === 'complete' ? '✓' : index + 1}</span>
+                        <strong>{definition.label}</strong>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          )}
 
           <p className="print-analysis-note">
             Each strategy starts from your known-good PrusaSlicer profile. Modelarium applies only documented overrides, writes temporary G-code outside the library, parses real slicer metrics and removes the temporary files afterwards.

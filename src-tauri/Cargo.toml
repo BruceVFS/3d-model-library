@@ -1,6 +1,6 @@
 [package]
 name = "model-library"
-version = "0.1.1"
+version = "0.2.0"
 description = "Modelarium local-first 3D printing model catalogue"
 authors = ["BruceVFS"]
 edition = "2021"

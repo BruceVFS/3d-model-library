@@ -74,3 +74,11 @@ When Print Analysis opens for an STL, Modelarium automatically starts the baseli
 The automatic run is attempted once for the selected STL while that Print Analysis panel instance is open. If that STL already has a baseline result in the current application session, Modelarium displays the existing result instead of immediately slicing it again.
 
 If automatic analysis fails, the error remains visible and the existing **Analyse baseline** button remains available for a manual retry.
+
+## Quiet local slicer execution
+
+On Windows, Modelarium launches PrusaSlicer with the `CREATE_NO_WINDOW` process flag for both slicing and version detection, preventing PrusaSlicer console windows from flashing in front of the application.
+
+While slicing is active, the Print Analysis modal shows that activity inside Modelarium. Baseline analysis identifies the local slicer operation, and four-strategy analysis shows the current strategy and 1-of-4 through 4-of-4 progress. The status explicitly states that PrusaSlicer is running locally and that Modelarium does not upload the model.
+
+Stdout/stderr capture, slicer warnings, G-code parsing, temporary-file handling and strategy settings are unchanged.

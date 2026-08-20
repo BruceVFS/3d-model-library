@@ -1,4 +1,4 @@
-# Modelarium hosted test — faceless.co.za/modelarium
+# Modelarium hosted test â€” faceless.co.za/modelarium
 
 This is a static hosted build of the same React/Vite frontend used by the local application. No backend, login, database, uploads or external service is required.
 
@@ -56,7 +56,7 @@ Firefox does not currently support Modelarium's direct library access because th
 
 Verify:
 
-1. Header identifies **Modelarium · 3D Model Library · v0.1.1 · Hosted Web**.
+1. Header identifies **Modelarium Â· 3D Model Library Â· v0.2.0 Â· Hosted Web**.
 2. System / Light / Dark theme switching works and survives a refresh.
 3. About opens as a modal and the email link uses `bruce@sutherand.co.za`.
 4. Choose a small representative local test library. The browser should request explicit folder permission.
@@ -71,3 +71,4 @@ When `modelarium.co.za` is hosted at the domain root, use the ordinary `npm run 
 ## Product direction
 
 Print Analysis remains a planned near-term capability after the catalogue core: Fast, Strength Optimised, Quality Optimised and Balanced comparisons should be based on real slicer-derived time/material estimates. Optional AI can later explain and recommend trade-offs while the underlying numbers stay deterministic.
+

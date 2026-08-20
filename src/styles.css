@@ -34,11 +34,15 @@ button { color: inherit; }
 }
 .brand-block { display: flex; gap: 13px; align-items: center; }
 .brand-mark {
-  width: 42px; height: 42px; border-radius: 12px;
-  display: grid; place-items: center;
-  font-weight: 800; letter-spacing: -.06em;
-  color: #10141d; background: linear-gradient(135deg, #c8d7ff, #789cf6);
-  box-shadow: 0 7px 22px rgba(94, 127, 219, .22);
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: block;
+  object-fit: cover;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, var(--accent) 28%);
+  border-radius: 12px;
+  background: #070a0f;
+  box-shadow: 0 7px 22px rgba(42, 94, 210, .24);
 }
 .brand-block h1 { font-size: 17px; margin: 0; letter-spacing: -.02em; }
 .brand-block p { font-size: 12px; margin: 3px 0 0; color: var(--muted); }
@@ -567,7 +571,7 @@ button { color: inherit; }
 }
 
 
-/* Modelarium v0.1.1: branding, About dialog, and System/Light/Dark theme support. */
+/* Modelarium branding, About dialog, and System/Light/Dark theme support. */
 html[data-theme='dark'] { color-scheme: dark; }
 html[data-theme='light'] {
   color-scheme: light;
@@ -581,7 +585,6 @@ html[data-theme='light'] {
   --accent: #426cc7;
   --accent-2: #2d58b2;
 }
-.brand-mark { font-size: 11px; letter-spacing: -.035em; }
 .theme-control {
   display: inline-flex;
   align-items: center;
@@ -1594,3 +1597,180 @@ html[data-theme='light'] .associated-file-filter.active {
     box-shadow: 0 16px 20px -22px rgba(63, 78, 103, .42);
   }
 }
+
+/* Quiet local slicer activity. */
+.analysis-activity {
+  margin-top: 12px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 91%, var(--accent) 9%);
+}
+
+.analysis-activity-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.analysis-activity-spinner {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  margin-top: 1px;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: modelarium-analysis-spin .85s linear infinite;
+}
+
+@keyframes modelarium-analysis-spin {
+  to { transform: rotate(360deg); }
+}
+
+.analysis-activity-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.analysis-activity-copy strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.analysis-activity-copy > span {
+  color: color-mix(in srgb, var(--accent) 65%, var(--text));
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.analysis-activity-copy small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.analysis-activity-strategies {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.analysis-activity-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 97%, var(--accent) 3%);
+}
+
+.analysis-activity-step > span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.analysis-activity-step strong {
+  overflow: hidden;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-activity-step.complete {
+  color: color-mix(in srgb, var(--accent) 60%, var(--text));
+}
+
+.analysis-activity-step.complete > span {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
+  background: color-mix(in srgb, var(--panel) 78%, var(--accent) 22%);
+}
+
+.analysis-activity-step.active {
+  border-color: color-mix(in srgb, var(--accent) 75%, var(--line));
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 82%, var(--accent) 18%);
+}
+
+.analysis-activity-step.active > span {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analysis-activity-spinner {
+    animation: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .analysis-activity-strategies {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Browser notice for the Desktop-only Print Analysis capability. */
+.desktop-analysis-notice {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.desktop-analysis-notice-card {
+  margin-top: 16px;
+  padding: 14px 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 94%, var(--accent) 6%);
+}
+
+.desktop-analysis-notice-card strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.desktop-analysis-notice-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.desktop-analysis-notice-privacy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: color-mix(in srgb, var(--accent) 55%, var(--text));
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.desktop-analysis-notice-privacy > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid color-mix(in srgb, var(--accent) 65%, var(--line));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--panel) 80%, var(--accent) 20%);
+}
+
+.desktop-analysis-notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+

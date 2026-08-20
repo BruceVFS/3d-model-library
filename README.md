@@ -158,3 +158,9 @@ The introductory product panel explains the catalogue purpose and disappears aft
 ### Associated file navigation
 
 Model detail views keep large associated-file collections manageable without changing source grouping. Collections with more than six files gain a local filename search, category filters for Models / Images / Packages, natural alphabetical sorting and a bounded internal file-list scroller. These controls operate only on the selected collection and do not change or reorganise source files.
+
+### Browser Print Analysis notice
+
+Local Web and Hosted Web keep the **Print Analysis** action visible for selected STL files so the browser experience accurately represents the full Modelarium product. Clicking the action in a browser presents an informational modal explaining that real Print Analysis requires the installable Windows Desktop edition because browsers cannot launch the local PrusaSlicer executable.
+
+The browser does not simulate or invent slicing results. The notice reinforces that Desktop Print Analysis runs locally and does not upload the STL.
