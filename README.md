@@ -5,11 +5,10 @@ Modelarium is a local-first visual catalogue for an existing 3D-printing model c
 The source library is read-only by design. The app does not rename, move, overwrite, extract, delete or upload model files. The Windows desktop build can open the containing folder or reveal a selected file in Explorer so deliberate file management happens outside the catalogue.
 
 ## Current baseline
-
 - React + TypeScript + Vite frontend
-- Browser mode in Chrome/Edge using the File System Access API
-- Windows desktop mode using Tauri v2
-- Native Windows folder picker in desktop mode
+- Local Web in Chrome/Edge using the File System Access API
+- Hosted Web using the same local-first catalogue frontend
+- Windows Desktop using Tauri v2 with a native Windows folder picker
 - Recursive read-only scanning
 - Supported file discovery: STL, 3MF, ZIP, JPG/JPEG, PNG, WEBP
 - Folder-based grouping into model collections
@@ -19,15 +18,20 @@ The source library is read-only by design. The app does not rename, move, overwr
 - Existing image covers
 - Locally generated STL thumbnails
 - Interactive STL detail preview and expanded lightbox preview
+- Sticky detail preview on suitable desktop-sized layouts
 - Search by model, folder and filename
 - File-type filtering
+- Associated-file filename search, Models / Images / Packages filters and natural sorting for larger collections
 - Possible duplicate detection using normalised filename + exact byte size
 - Collection/file totals and scan status
-- Associated-file list with size and modified date
 - **Open source folder** on every model card/detail view in the desktop build
 - **Reveal selected file in Explorer** from the detail view in the desktop build
-- Desktop **Print Analysis proof of concept**: selected STL → PrusaSlicer CLI baseline slice → real time/filament metrics, local material cost calculation and slicer warnings
-
+- Windows Desktop **Print Analysis** using a local PrusaSlicer installation
+- Automatic real baseline analysis for a selected STL when analysis settings are already configured
+- Four-way real slicer comparison: **Fast**, **Balanced**, **Strength Optimised** and **Quality Optimised**
+- Real slicer-derived print time and filament metrics, local material-cost calculation and slicer warnings
+- Quiet local slicer execution with analysis progress shown inside Modelarium instead of flashing console windows
+- Browser Print Analysis action explaining when the installable Windows Desktop edition is required
 ## Source-file safety
 
 The desktop Rust layer keeps the selected root folder in application state and validates every preview/reveal request against that root. It scans directories and reads file bytes only for catalogue metadata and local previews. It contains no command for rename, move, delete, overwrite or extraction.
@@ -87,16 +91,17 @@ npm install
 npm run tauri dev
 ```
 
-The Tauri app uses the same React/Vite frontend, but folder selection and source-location actions use the local Rust desktop layer.
+The Tauri app uses the same React/Vite frontend, while folder selection, Explorer actions and local PrusaSlicer execution use the Rust desktop layer.
 
-To build an installable/release desktop application later:
+To build the Windows NSIS installer:
 
 ```powershell
-npm run tauri build
+npm run tauri -- build --bundles nsis
 ```
 
-A `Cargo.lock` file will be generated during the first Rust build. Commit it so desktop dependency versions remain reproducible.
+Release installers are written beneath `src-tauri/target/release/bundle/nsis/`. PrusaSlicer remains an external local dependency for Print Analysis in v0.2.0; Modelarium does not bundle or upload the slicer or model files.
 
+A `Cargo.lock` file is committed so desktop dependency versions remain reproducible.
 ## Production web build
 
 For a root-domain/local build:
@@ -105,20 +110,20 @@ For a root-domain/local build:
 npm run build
 ```
 
-For the temporary hosted test at `https://www.faceless.co.za/modelarium/`, build with the required subdirectory base path:
+For the Hosted Web build currently deployed under `https://www.faceless.co.za/modelarium/`, build with the required subdirectory base path:
 
 ```powershell
 npm run build:hosted-test
 ```
 
-Upload the **contents** of `dist/` into the web server's `/modelarium/` directory, preserving the generated `assets/` and `images/` subdirectories. See `HOSTING-MODELARIUM.md`.
+Upload the **contents** of `dist/` into the web server's `/modelarium/` directory, preserving generated subdirectories. See `HOSTING-MODELARIUM.md`.
 
+Hosted Web and Local Web keep catalogue browsing, previews and the shared current UI. Real Print Analysis remains Windows Desktop-only because a normal browser cannot launch the user's local PrusaSlicer executable.
 ## Important File System Access note
 
 In browser mode, Chromium's `FileSystemFileHandle.getFile()` must be invoked on the handle object (`handle.getFile()`). Do not detach the method and call it separately; that can cause `Illegal invocation`.
 
 ## Not yet implemented
-
 - IndexedDB persistence and incremental rescan cache
 - Native scan progress events during a Tauri scan (the desktop UI currently shows a scanning state and final totals)
 - 3MF rendering
@@ -127,22 +132,26 @@ In browser mode, Chromium's `FileSystemFileHandle.getFile()` must be invoked on 
 - User-selected cover images
 - Thumbnail persistence between sessions
 - Exact duplicate verification via local hashing
-- Four-way Print Analysis comparison (Fast / Balanced / Strength Optimised / Quality Optimised)
-- Named printer/material profiles and analysis caching
+- Named printer/material profiles and persistent Print Analysis result caching
 - Optional AI recommendations
+## Print Analysis
 
-## Roadmap note — Print Analysis
+Available in the **Windows Desktop** edition.
 
-Planned after the core catalogue is stable:
+Modelarium uses real PrusaSlicer-derived metrics to compare:
 
 - Fast
+- Balanced
 - Strength Optimised
 - Quality Optimised
-- Balanced
 
-These comparisons should use real slicer-derived time/material estimates. Any AI layer should be optional and explain/recommend trade-offs rather than inventing print figures.
+Each comparison starts from the user's configured PrusaSlicer profile and reports real estimated print time, filament use and material cost. Strategy presets are comparison heuristics rather than guarantees of strength, finish or suitability.
 
+Print Analysis runs locally on the user's computer and does not upload model files. Temporary G-code used for analysis is created outside the source library, parsed locally and removed afterwards.
 
+Local Web and Hosted Web keep the Print Analysis action visible for STL files, but explain that real slicing requires the installable Windows Desktop edition because browsers cannot launch the local PrusaSlicer executable.
+
+Any future AI layer will remain optional and will explain or recommend trade-offs based on real slicer results rather than inventing print figures.
 ## Versioning and runtime identity
 
 Model Library uses semantic versioning (`MAJOR.MINOR.PATCH`) while it evolves toward a first production release. `package.json` is the source of truth for the application version, and the UI reads that value at build time so the displayed version stays aligned with the codebase. Git release tags should mirror released application versions (for example `v0.1.0`, `v0.2.0`).
@@ -153,14 +162,8 @@ The sticky application header always identifies the runtime:
 * **Windows Desktop** — the React/Vite frontend running inside Tauri with native Windows capabilities.
 * **Hosted Web** — the same frontend served from a non-local web host.
 
-The introductory product panel explains the catalogue purpose and disappears after a library is chosen. **About** opens product/privacy/contact information and the planned Print Analysis direction. Theme preference supports **System**, **Light** and **Dark** and is stored locally when browser storage is available.
+The introductory product panel explains the catalogue purpose and disappears after a library is chosen. **About** describes the installable Windows Desktop, Hosted Web and Local Web editions, together with the local/privacy behaviour of Print Analysis. Theme preference supports **System**, **Light** and **Dark** and is stored locally when browser storage is available.
 
 ### Associated file navigation
 
 Model detail views keep large associated-file collections manageable without changing source grouping. Collections with more than six files gain a local filename search, category filters for Models / Images / Packages, natural alphabetical sorting and a bounded internal file-list scroller. These controls operate only on the selected collection and do not change or reorganise source files.
-
-### Browser Print Analysis notice
-
-Local Web and Hosted Web keep the **Print Analysis** action visible for selected STL files so the browser experience accurately represents the full Modelarium product. Clicking the action in a browser presents an informational modal explaining that real Print Analysis requires the installable Windows Desktop edition because browsers cannot launch the local PrusaSlicer executable.
-
-The browser does not simulate or invent slicing results. The notice reinforces that Desktop Print Analysis runs locally and does not upload the STL.
