@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import packageJson from '../package.json'
-import { ImagePreview, PreviewFallback, StlThumbnail, StlViewer } from './components/Preview'
+import { ImagePreview, PreviewFallback, StlThumbnail, StlViewer, ThreeMfThumbnail, ThreeMfViewer } from './components/Preview'
 import { PrintAnalysisPanel, formatPrintAnalysisSummary } from './components/PrintAnalysisPanel'
 import {
   duplicateSignature,
@@ -72,6 +72,7 @@ function Cover({ collection }: { collection: ModelCollection }) {
   }
 
   if (cover.extension === 'stl') return <StlThumbnail file={cover} />
+  if (cover.extension === '3mf') return <ThreeMfThumbnail file={cover} />
   return <PreviewFallback label={`${cover.extension.toUpperCase()} model`} />
 }
 
@@ -82,6 +83,10 @@ function FileBadge({ file }: { file: LibraryFile }) {
 function FileThumbnail({ file }: { file: LibraryFile }) {
   if (file.extension === 'stl') {
     return <StlThumbnail file={file} />
+  }
+
+  if (file.extension === '3mf') {
+    return <ThreeMfThumbnail file={file} />
   }
 
   if (['jpg', 'jpeg', 'png', 'webp'].includes(file.extension)) {
@@ -286,6 +291,7 @@ export default function App() {
   const canExpandPreview = Boolean(
     selectedPreviewFile &&
       (selectedPreviewFile.extension === 'stl' ||
+        selectedPreviewFile.extension === '3mf' ||
         ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension)),
   )
   const isStlSelected = selectedPreviewFile?.extension === 'stl'
@@ -916,20 +922,14 @@ export default function App() {
                   : selected.folderPath || rootName || 'Selected folder'}
               </p>
 
-              {desktopMode && selected.files[0]?.nativePath && (
-                <button
-                  type="button"
-                  className="detail-source-action"
-                  onClick={() => void openCollectionFolder(selected)}
-                >
-                  Open source folder
-                </button>
-              )}
             </div>
 
-            <div className="detail-preview-stage">
+            <div className="detail-sticky-stack">
+              <div className="detail-preview-stage">
               {selectedPreviewFile?.extension === 'stl' ? (
                 <StlViewer file={selectedPreviewFile} />
+              ) : selectedPreviewFile?.extension === '3mf' ? (
+                <ThreeMfViewer file={selectedPreviewFile} />
               ) : selectedPreviewFile && ['jpg', 'jpeg', 'png', 'webp'].includes(selectedPreviewFile.extension) ? (
                 <div className="detail-image"><ImagePreview file={selectedPreviewFile} /></div>
               ) : selectedPreviewFile ? (
@@ -973,16 +973,16 @@ export default function App() {
                   {formatPrintAnalysisSummary(selectedSummaryResult)}
                 </button>
               )}
-            </div>
+              </div>
 
-            <div className="detail-summary">
+              <div className="detail-summary">
               <div><strong>{selected.geometryFiles.length}</strong><span>Geometry</span></div>
               <div><strong>{selected.imageFiles.length}</strong><span>Images</span></div>
               <div><strong>{selected.packageFiles.length}</strong><span>Packages</span></div>
             </div>
 
-            <section className="file-section">
-              <div className="file-section-heading">
+              <div className="detail-file-helper">
+                <div className="file-section-heading">
                 <h3>Associated files</h3>
                 <span>
                   {filteredAssociatedFiles.length === selected.files.length
@@ -1036,6 +1036,19 @@ export default function App() {
                 </div>
               )}
 
+                {desktopMode && selected.files[0]?.nativePath && (
+                  <button
+                    type="button"
+                    className="detail-source-action detail-helper-source-action"
+                    onClick={() => void openCollectionFolder(selected)}
+                  >
+                    Open source folder
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <section className="file-section">
               <div className={selected.files.length > 6 ? 'file-list file-list-scrollable' : 'file-list'}>
                 {filteredAssociatedFiles.length > 0 ? (
                   filteredAssociatedFiles.map((file) => (
@@ -1342,6 +1355,8 @@ export default function App() {
               <div className="preview-modal-content">
                 {selectedPreviewFile.extension === 'stl' ? (
                   <StlViewer file={selectedPreviewFile} showReset />
+                ) : selectedPreviewFile.extension === '3mf' ? (
+                  <ThreeMfViewer file={selectedPreviewFile} showReset />
                 ) : (
                   <div className="expanded-image"><ImagePreview file={selectedPreviewFile} /></div>
                 )}

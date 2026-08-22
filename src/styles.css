@@ -1774,3 +1774,149 @@ html[data-theme='light'] .associated-file-filter.active {
   margin-top: 18px;
 }
 
+/* 3MF parsing/loading feedback for large and multi-plate files. */
+.three-mf-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  color: #dfe7f5;
+  background:
+    radial-gradient(circle at center, rgba(18, 24, 34, .68), rgba(10, 13, 19, .88));
+  backdrop-filter: blur(2px);
+}
+
+.three-mf-loading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.three-mf-loading strong {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.three-mf-loading span:not(.three-mf-loading-spinner) {
+  color: #9aa8bd;
+  font-size: 9px;
+}
+
+.three-mf-loading-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(132, 161, 220, .24);
+  border-top-color: #86a9ff;
+  border-radius: 50%;
+  animation: modelarium-3mf-spin .8s linear infinite;
+}
+
+@keyframes modelarium-3mf-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .three-mf-loading-spinner {
+    animation: none;
+  }
+}
+
+/* Sticky preview + associated-file helper stack. */
+.detail-heading {
+  margin-bottom: 10px;
+}
+
+.detail-file-helper {
+  padding: 0 0 11px;
+  background: inherit;
+}
+
+.detail-file-helper .detail-summary {
+  margin-bottom: 12px;
+}
+
+.detail-helper-source-action {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+}
+
+@media (min-width: 961px) and (min-height: 700px) {
+  /* The parent stack now owns sticky positioning. */
+  .detail-preview-stage {
+    position: relative;
+    top: auto;
+    z-index: auto;
+    isolation: auto;
+  }
+
+  .detail-preview-stage::after {
+    display: none;
+  }
+
+  .detail-sticky-stack {
+    position: sticky;
+    top: 0;
+    z-index: 9;
+    isolation: isolate;
+    background: inherit;
+    padding-bottom: 2px;
+    box-shadow: 0 18px 24px -25px rgba(0, 0, 0, .72);
+  }
+}
+
+/* Compact sticky detail helper refinement. */
+.detail-summary {
+  gap: 7px;
+  margin: 7px 0 5px;
+}
+
+.detail-summary > div {
+  min-height: 54px;
+  padding: 8px 10px;
+}
+
+.detail-summary > div strong {
+  margin-bottom: 2px;
+  line-height: 1;
+}
+
+.detail-summary > div span {
+  line-height: 1.05;
+}
+
+.detail-file-helper {
+  padding-bottom: 4px;
+}
+
+.detail-file-helper .detail-summary {
+  margin-bottom: 5px;
+}
+
+.detail-file-helper .file-section-heading {
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+.detail-file-helper .associated-file-tools {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.detail-file-helper .associated-file-search {
+  margin-bottom: 6px;
+}
+
+.detail-file-helper .associated-file-filters {
+  margin-bottom: 0;
+}
+
+.detail-helper-source-action {
+  margin-top: 8px;
+  margin-bottom: 2px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}

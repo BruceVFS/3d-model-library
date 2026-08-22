@@ -15,7 +15,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.173.0",
-    "@tauri-apps/api": "^2.0.0"
+    "@tauri-apps/api": "^2.0.0",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@types/react": "^19.0.8",
